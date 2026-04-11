@@ -1,25 +1,131 @@
 import streamlit as st
+import sqlite3
+import pandas as pd
 
-# Configure the main page
 st.set_page_config(page_title="Prime TechHub", layout="wide")
 
+# --- DATABASE HELPER FUNCTIONS ---
+def get_products():
+    """Reads all products from the database."""
+    conn = sqlite3.connect('techhub.db')
+    df = pd.read_sql_query("SELECT * FROM products", conn)
+    conn.close()
+    return df
+
+def verify_login(username, password):
+    """Checks admin credentials."""
+    conn = sqlite3.connect('techhub.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+    user = cursor.fetchone()
+    conn.close()
+    return user is not None
+
+def add_product(name, category, price, stock, desc):
+    """Inserts a new product into the database."""
+    conn = sqlite3.connect('techhub.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO products (name, category, price, stock, description) VALUES (?, ?, ?, ?, ?)",
+                   (name, category, price, stock, desc))
+    conn.commit()
+    conn.close()
+
+# --- MAIN APPLICATION ROUTING ---
 def main():
-    # Sidebar navigation
     st.sidebar.title("Navigation")
     page = st.sidebar.radio("Go to:", ["Storefront", "Admin Dashboard", "Cart"])
 
-    # Main content area routing
+    # 1. STOREFRONT PAGE
     if page == "Storefront":
         st.title("Prime TechHub: Smart Home Devices")
-        st.write("The product catalog will render here.")
+        products_df = get_products()
         
+        if products_df.empty:
+            st.warning("The inventory is currently empty. Please add items via the Admin Dashboard.")
+        else:
+            if 'cart' not in st.session_state:
+                st.session_state['cart'] = []
+                
+            for index, row in products_df.iterrows():
+                col1, col2, col3 = st.columns([3, 1, 1])
+                
+                with col1:
+                    st.subheader(row['name'])
+                    st.write(f"Category: {row['category']} | {row['description']}")
+                with col2:
+                    st.write(f"**Price:** {row['price']} PKR")
+                    st.write(f"**Stock:** {row['stock']} units")
+                with col3:
+                    if row['stock'] > 0:
+                        if st.button("Add to Cart", key=f"add_{row['id']}"):
+                            st.session_state['cart'].append({
+                                "id": row['id'], 
+                                "name": row['name'], 
+                                "price": row['price']
+                            })
+                            st.toast(f"Added {row['name']} to cart!")
+                    else:
+                        st.error("Out of Stock")
+                st.divider()
+
+    # 2. ADMIN DASHBOARD PAGE
     elif page == "Admin Dashboard":
         st.title("Inventory Management")
-        st.warning("Secure Area: Login required.")
         
+        if 'logged_in' not in st.session_state:
+            st.session_state['logged_in'] = False
+
+        if not st.session_state['logged_in']:
+            st.subheader("Admin Login")
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            
+            if st.button("Login"):
+                if verify_login(username, password):
+                    st.session_state['logged_in'] = True
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials")
+        else:
+            st.success("Logged in successfully.")
+            if st.button("Logout"):
+                st.session_state['logged_in'] = False
+                st.rerun()
+            
+            st.subheader("Add New Product")
+            with st.form("add_product_form"):
+                p_name = st.text_input("Product Name")
+                p_cat = st.selectbox("Category", ["Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"])
+                p_price = st.number_input("Price (PKR)", min_value=0.0, step=100.0)
+                p_stock = st.number_input("Stock Quantity", min_value=0, step=1)
+                p_desc = st.text_area("Description")
+                
+                submitted = st.form_submit_button("Add to Inventory")
+                
+                if submitted:
+                    add_product(p_name, p_cat, p_price, p_stock, p_desc)
+                    st.success(f"Successfully added '{p_name}' to the database!")
+                    # The fix to push the form up and allow the dropdown to open downwards
+                    st.write("<br><br><br><br>", unsafe_allow_html=True)
+
+    # 3. CART PAGE
     elif page == "Cart":
         st.title("Shopping Cart")
-        st.info("Your cart is currently empty.")
+        
+        if 'cart' not in st.session_state or len(st.session_state['cart']) == 0:
+            st.info("Your cart is currently empty.")
+        else:
+            total_price = 0
+            for item in st.session_state['cart']:
+                st.write(f"- {item['name']} : {item['price']} PKR")
+                total_price += item['price']
+                
+            st.divider()
+            st.subheader(f"Total: {total_price} PKR")
+            
+            if st.button("Proceed to Checkout"):
+                st.warning("Checkout logic will connect to the database next.")
 
+# This is the execution trigger. Without this, the screen is blank.
 if __name__ == "__main__":
     main()
