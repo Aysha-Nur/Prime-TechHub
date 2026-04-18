@@ -30,6 +30,38 @@ def add_product(name, category, price, stock, desc):
     conn.commit()
     conn.close()
 
+def process_checkout(cart_items):
+    """Deducts purchased items from stock AND logs the sale in the orders table."""
+    conn = sqlite3.connect('techhub.db')
+    cursor = conn.cursor()
+    
+    try:
+        for item in cart_items:
+            # 1. Deduct the stock
+            cursor.execute("UPDATE products SET stock = stock - 1 WHERE id = ?", (item['id'],))
+            # 2. Log the sale into the orders table
+            cursor.execute("INSERT INTO orders (product_name, price) VALUES (?, ?)", (item['name'], item['price']))
+            
+        conn.commit()
+        success = True
+    except Exception as e:
+        conn.rollback() 
+        success = False
+        
+    conn.close()
+    return success 
+
+def get_orders():
+    """Reads all sales records from the database."""
+    conn = sqlite3.connect('techhub.db')
+    # Read the orders table. If it crashes (e.g., table doesn't exist yet), return an empty dataframe.
+    try:
+        df = pd.read_sql_query("SELECT * FROM orders", conn)
+    except:
+        df = pd.DataFrame()
+    conn.close()
+    return df
+
 # --- MAIN APPLICATION ROUTING ---
 def main():
     st.sidebar.title("Navigation")
@@ -92,21 +124,38 @@ def main():
                 st.session_state['logged_in'] = False
                 st.rerun()
             
-            st.subheader("Add New Product")
-            with st.form("add_product_form"):
-                p_name = st.text_input("Product Name")
-                p_cat = st.selectbox("Category", ["Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"])
-                p_price = st.number_input("Price (PKR)", min_value=0.0, step=100.0)
-                p_stock = st.number_input("Stock Quantity", min_value=0, step=1)
-                p_desc = st.text_area("Description")
-                
-                submitted = st.form_submit_button("Add to Inventory")
-                
-                if submitted:
-                    add_product(p_name, p_cat, p_price, p_stock, p_desc)
-                    st.success(f"Successfully added '{p_name}' to the database!")
-                    # The fix to push the form up and allow the dropdown to open downwards
-                    st.write("<br><br><br><br>", unsafe_allow_html=True)
+            # Create two tabs for the Admin
+            tab1, tab2 = st.tabs(["Add New Product", "Sales Ledger"])
+            
+            # TAB 1: ADD PRODUCTS
+            with tab1:
+                st.subheader("Add to Inventory")
+                with st.form("add_product_form"):
+                    p_name = st.text_input("Product Name")
+                    p_cat = st.selectbox("Category", ["Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"])
+                    p_price = st.number_input("Price (PKR)", min_value=0.0, step=100.0)
+                    p_stock = st.number_input("Stock Quantity", min_value=0, step=1)
+                    p_desc = st.text_area("Description")
+                    
+                    submitted = st.form_submit_button("Add to Inventory")
+                    
+                    if submitted:
+                        add_product(p_name, p_cat, p_price, p_stock, p_desc)
+                        st.success(f"Successfully added '{p_name}' to the database!")
+                        st.write("<br><br><br><br>", unsafe_allow_html=True)
+
+            # TAB 2: VIEW SALES
+            with tab2:
+                st.subheader("Recent Sales History")
+                orders_df = get_orders()
+                if orders_df.empty:
+                    st.info("No sales have been made yet.")
+                else:
+                    st.dataframe(orders_df, use_container_width=True, hide_index=True)
+                    
+                    # Calculate and display total revenue
+                    total_revenue = orders_df['price'].sum()
+                    st.metric(label="Total Revenue (PKR)", value=f"{total_revenue:,.2f}")
 
     # 3. CART PAGE
     elif page == "Cart":
@@ -124,8 +173,12 @@ def main():
             st.subheader(f"Total: {total_price} PKR")
             
             if st.button("Proceed to Checkout"):
-                st.warning("Checkout logic will connect to the database next.")
+                if process_checkout(st.session_state['cart']):
+                    st.success("Payment successful! Stock has been deducted.")
+                    st.session_state['cart'] = [] # Empty the cart after purchase
+                    st.rerun() # Refresh the screen
+                else:
+                    st.error("Checkout failed. Database error.")
 
-# This is the execution trigger. Without this, the screen is blank.
 if __name__ == "__main__":
     main()

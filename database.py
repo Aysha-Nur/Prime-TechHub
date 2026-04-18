@@ -26,7 +26,15 @@ def init_db():
             description TEXT
         )
     ''')
-
+# Create Orders Table for Sales Logging
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_name TEXT NOT NULL,
+            price REAL NOT NULL,
+            sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     # Insert a default Admin user if the table is empty
     cursor.execute("SELECT COUNT(*) FROM users")
     if cursor.fetchone()[0] == 0:
