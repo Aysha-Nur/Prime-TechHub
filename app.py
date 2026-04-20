@@ -67,28 +67,49 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio("Go to:", ["Storefront", "Admin Dashboard", "Cart"])
 
-    # 1. STOREFRONT PAGE
+   # 1. STOREFRONT PAGE
     if page == "Storefront":
         st.title("Prime TechHub: Smart Home Devices")
+        
+        # --- NEW: SEARCH & FILTER UI ---
+        col_search, col_filter = st.columns([2, 1])
+        with col_search:
+            search_query = st.text_input("🔍 Search products...", "")
+        with col_filter:
+            category_filter = st.selectbox("📂 Filter by Category", ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"])
+
         products_df = get_products()
         
         if products_df.empty:
             st.warning("The inventory is currently empty. Please add items via the Admin Dashboard.")
         else:
-            if 'cart' not in st.session_state:
-                st.session_state['cart'] = []
-                
-            for index, row in products_df.iterrows():
-                col1, col2, col3 = st.columns([3, 1, 1])
-                
-                with col1:
-                    st.subheader(row['name'])
-                    st.write(f"Category: {row['category']} | {row['description']}")
-                with col2:
-                    st.write(f"**Price:** {row['price']} PKR")
-                    st.write(f"**Stock:** {row['stock']} units")
-                with col3:
-                    if row['stock'] > 0:
+            # --- NEW: APPLY SEARCH AND FILTER LOGIC ---
+            if category_filter != "All":
+                products_df = products_df[products_df['category'] == category_filter]
+            
+            if search_query:
+                # Filters by name, ignoring case sensitivity
+                products_df = products_df[products_df['name'].str.contains(search_query, case=False, na=False)]
+            
+            # --- NEW: HIDE OUT OF STOCK ITEMS ---
+            products_df = products_df[products_df['stock'] > 0]
+
+            if products_df.empty:
+                st.info("No products match your search or items are out of stock.")
+            else:
+                if 'cart' not in st.session_state:
+                    st.session_state['cart'] = []
+                    
+                for index, row in products_df.iterrows():
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    
+                    with col1:
+                        st.subheader(row['name'])
+                        st.write(f"Category: {row['category']} | {row['description']}")
+                    with col2:
+                        st.write(f"**Price:** {row['price']} PKR")
+                        st.write(f"**Stock:** {row['stock']} units")
+                    with col3:
                         if st.button("Add to Cart", key=f"add_{row['id']}"):
                             st.session_state['cart'].append({
                                 "id": row['id'], 
@@ -96,9 +117,7 @@ def main():
                                 "price": row['price']
                             })
                             st.toast(f"Added {row['name']} to cart!")
-                    else:
-                        st.error("Out of Stock")
-                st.divider()
+                    st.divider()
 
     # 2. ADMIN DASHBOARD PAGE
     elif page == "Admin Dashboard":
