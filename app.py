@@ -2,7 +2,18 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 
+from database import get_customer_orders, process_checkout
+
 st.set_page_config(page_title="Prime TechHub", layout="wide")
+# UI POLISH: Force the cursor to be a pointer (hand) on dropdowns
+st.markdown("""
+    <style>
+    /* Target the selectbox container and input field to show the pointer hand */
+    div[data-baseweb="select"] > div, div[data-baseweb="select"] input {
+        cursor: pointer !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- NEW: DATABASE SETUP FUNCTION ---
 def setup_database():
@@ -76,27 +87,6 @@ def add_product(name, category, price, stock, desc):
     conn.commit()
     conn.close()
 
-def process_checkout(cart_items):
-    """Deducts purchased items from stock AND logs the sale in the orders table."""
-    conn = sqlite3.connect('techhub.db')
-    cursor = conn.cursor()
-    
-    try:
-        for item in cart_items:
-            # 1. Deduct the stock
-            cursor.execute("UPDATE products SET stock = stock - 1 WHERE id = ?", (item['id'],))
-            # 2. Log the sale into the orders table
-            cursor.execute("INSERT INTO orders (product_name, price) VALUES (?, ?)", (item['name'], item['price']))
-            
-        conn.commit()
-        success = True
-    except Exception as e:
-        conn.rollback() 
-        success = False
-        
-    conn.close()
-    return success 
-
 def get_orders():
     """Reads all sales records from the database."""
     conn = sqlite3.connect('techhub.db')
@@ -115,45 +105,67 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio("Go to:", ["Storefront", "Cart", "My Account", "Admin Dashboard"])
 
-   # 1. STOREFRONT PAGE
+ # 1. STOREFRONT PAGE
     if page == "Storefront":
         st.title("Prime TechHub: Smart Home Devices")
         
-        # --- NEW: SEARCH & FILTER UI ---
+        # --- SEARCH & FILTER UI ---
         col_search, col_filter = st.columns([2, 1])
         with col_search:
-            search_query = st.text_input("🔍 Search products...", "")
+            search_query = st.text_input("🔍 Search products...", placeholder="Type a device name, brand, or keyword...")
         with col_filter:
-            category_filter = st.selectbox("📂 Filter by Category", ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"])
+            category_filter = st.selectbox(
+                "📁 Filter by Category", 
+                ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"], 
+                index=None, 
+                placeholder="Search or select a category..."
+            )
 
+        # Fetch products from backend database
         products_df = get_products()
         
         if products_df.empty:
             st.warning("The inventory is currently empty. Please add items via the Admin Dashboard.")
         else:
-            # --- NEW: APPLY SEARCH AND FILTER LOGIC ---
-            if category_filter != "All":
+            # Track if a search filter is actively being used
+            is_searching = False
+
+            # --- FIX 1: APPLY CATEGORY FILTER ---
+            if category_filter is not None and category_filter != "All":
                 products_df = products_df[products_df['category'] == category_filter]
+                is_searching = True
             
-            if search_query:
-                # Filters by name, ignoring case sensitivity
-                products_df = products_df[products_df['name'].str.contains(search_query, case=False, na=False)]
+            # --- FIX 2: ADVANCED FUZZY SEARCH (Ignores Case & Hyphens/Dashes) ---
+            # Clean up the user query string by stripping whitespace and dashes
+            clean_query = search_query.strip().lower().replace("-", "").replace(" ", "")
             
-            # --- NEW: HIDE OUT OF STOCK ITEMS ---
+            if clean_query:
+                is_searching = True
+                # Create a temporary search column that also strips dashes and spaces from product names
+                products_df['clean_name'] = products_df['name'].str.lower().str.replace("-", "", regex=False).str.replace(" ", "", regex=False)
+                # Match the sanitized strings together
+                products_df = products_df[products_df['clean_name'].str.contains(clean_query, na=False)]
+            
+            # --- HIDE OUT OF STOCK ITEMS ---
             products_df = products_df[products_df['stock'] > 0]
 
-            if products_df.empty:
-                st.info("No products match your search or items are out of stock.")
+            # --- DYNAMIC NOT FOUND MESSAGE ---
+            # The message ONLY displays if the dataset is empty AND the user actually typed a search query
+            if products_df.empty and is_searching:
+                st.warning("We're sorry, no such products found. Please try different keywords or browse our categories.")
+            elif products_df.empty and not is_searching:
+                st.info("No active devices available in the inventory right now.")
             else:
                 if 'cart' not in st.session_state:
                     st.session_state['cart'] = []
                     
+                # --- RENDER PRODUCTS ---
                 for index, row in products_df.iterrows():
                     col1, col2, col3 = st.columns([3, 1, 1])
                     
                     with col1:
                         st.subheader(row['name'])
-                        st.write(f"Category: {row['category']} | {row['description']}")
+                        st.write(f"Category: {row['category']}")
                     with col2:
                         st.write(f"**Price:** {row['price']} PKR")
                         st.write(f"**Stock:** {row['stock']} units")
@@ -258,7 +270,12 @@ def main():
     elif page == "Cart":
         st.title("🛒 Secure Checkout")
         
-        if 'receipt' in st.session_state:
+        # --- NEW: ENFORCE CUSTOMER LOGIN ---
+        if not st.session_state.get('customer_logged_in') or st.session_state.get('current_customer') is None:
+            st.warning("🔒 Please sign in to your Prime TechHub account to view your cart and checkout.")
+            st.info("Navigate to the 'My Account' tab in the sidebar to log in or register.")
+            
+        elif 'receipt' in st.session_state:
             st.success("✅ Payment Successful! Your order has been confirmed.")
             st.info(f"""
             **Digital Receipt: #{st.session_state['receipt']['order_id']}**
@@ -274,6 +291,7 @@ def main():
                 
         elif 'cart' not in st.session_state or len(st.session_state['cart']) == 0:
             st.info("Your cart is currently empty. Visit the Storefront to add items.")
+            
         else:
             total_price = sum(item['price'] for item in st.session_state['cart'])
             
@@ -287,7 +305,7 @@ def main():
             
             with st.form("checkout_form"):
                 st.write("**1. Delivery Address**")
-                c_name = st.text_input("Full Name")
+                c_name = st.text_input("Full Name", value=st.session_state['current_customer']['name']) # Auto-fills their name
                 c_phone = st.text_input("Phone Number")
                 c_address = st.text_area("Complete Address (House, Street, City)")
                 
@@ -304,7 +322,10 @@ def main():
                     elif pay_method == "Credit/Debit Card" and c_card.replace(" ", "") != "4242424242424242":
                         st.error("Payment Failed: Invalid Card Number. Please use the testing card.")
                     else:
-                        if process_checkout(st.session_state['cart']):
+                        # --- NEW: PASS THE CUSTOMER ID TO THE DATABASE ---
+                        active_customer_id = st.session_state['current_customer']['id']
+                        
+                        if process_checkout(st.session_state['cart'], active_customer_id):
                             import random
                             st.session_state['receipt'] = {
                                 "order_id": f"PTH-{random.randint(1000, 9999)}",
@@ -322,98 +343,111 @@ def main():
                             
     # 4. MY ACCOUNT PAGE
     elif page == "My Account":
-        # Initialize session state variables
+        # Centering the UI
+        _, col_mid, _ = st.columns([1, 2, 1])
+
+        # --- Safely initialize ALL session states so the KeyError never happens ---
         if 'customer_logged_in' not in st.session_state:
             st.session_state['customer_logged_in'] = False
+        if 'current_customer' not in st.session_state:
+            st.session_state['current_customer'] = None
         if 'account_mode' not in st.session_state:
-            st.session_state['account_mode'] = "login" # Start on login mode
+            st.session_state['account_mode'] = "login"
 
-        if not st.session_state['customer_logged_in']:
-            # Center the login box like a real web portal
-            col1, col2, col3 = st.columns([1, 2, 1])
-            
-            with col2:
+        with col_mid:
+            # Check if logged in AND the customer data actually exists
+            if not st.session_state['customer_logged_in'] or st.session_state['current_customer'] is None:
                 if st.session_state['account_mode'] == "login":
-                    st.header("Sign in")
-                    st.write("Use your Prime TechHub Account")
-                    
-                    with st.form("unified_login", clear_on_submit=True):
-                        email = st.text_input("Email")
-                        password = st.text_input("Password", type="password")
-                        submit = st.form_submit_button("Next")
-                        
-                        if submit:
-                            customer = verify_customer(email, password)
-                            if customer:
-                                msg = st.empty()
-                                msg.success("Logged in successfully!")
-                                import time
-                                time.sleep(1.2)
-                                msg.empty()
-                                st.session_state['customer_logged_in'] = True
-                                st.session_state['current_customer'] = customer
-                                st.rerun()
-                            else:
-                                st.error("Invalid email or password.")
-                    
-                    st.write("--- OR ---")
-                    if st.button("🌐 Continue with Google", use_container_width=True):
-                        st.info("Google Integration is in Sandbox mode. Please use email/password for this demo.")
-                    
+                    st.markdown("<h1 style='text-align: center;'>Sign in</h1>", unsafe_allow_html=True)
+                    st.markdown("<p style='text-align: center; color: #5f6368; font-size: 14px;'>to continue to your Prime TechHub Dashboard</p>", unsafe_allow_html=True)
                     st.write("")
-                    if st.button("Create account"):
-                        st.session_state['account_mode'] = "signup"
-                        st.rerun()
 
-                else:
-                    st.header("Create Account")
-                    st.write("Join the Prime TechHub community")
-                    
-                    with st.form("unified_signup", clear_on_submit=True):
-                        name = st.text_input("Full Name")
-                        email = st.text_input("Email Address")
-                        password = st.text_input("Password", type="password")
-                        submit = st.form_submit_button("Register")
-                        
-                        if submit:
-                            if not name or not email or not password:
-                                st.error("All fields are required.")
-                            else:
-                                if register_customer(name, email, password):
-                                    msg = st.empty()
-                                    msg.success("Account created!")
-                                    import time
-                                    time.sleep(1.2)
-                                    msg.empty()
-                                    # Auto-login
-                                    customer = verify_customer(email, password)
+                    with st.container(border=True):
+                        with st.form("pro_login", clear_on_submit=True):
+                            email = st.text_input("Email Address")
+                            password = st.text_input("Password", type="password")
+                            btn_login = st.form_submit_button("SIGN IN", use_container_width=True)
+                            
+                            if btn_login:
+                                customer = verify_customer(email, password)
+                                if customer:
                                     st.session_state['customer_logged_in'] = True
                                     st.session_state['current_customer'] = customer
                                     st.rerun()
                                 else:
-                                    st.error("Email already registered.")
+                                    st.error("Account not found. Please check your details.")
+
+                        st.markdown("<p style='text-align: center; font-weight: bold; font-size: 14px; margin-top: -5px; margin-bottom: 15px; color: #70757a;'>OR</p>", unsafe_allow_html=True)
+                        
+                        google_html = """
+                        <a href="https://github.com/Aysha-Nur/Prime-TechHub#authentication-notice" target="_blank" style="text-decoration: none; color: inherit; width: 100%;">
+                            <div style="background-color: white; color: #5f6368; border: 1px solid #dadce0; border-radius: 4px; padding: 8px 20px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 15px;">
+                                <img src="https://img.icons8.com/color/48/000000/google-logo.png" style="width: 18px; margin-right: 10px;"/>
+                                Sign in with Google
+                            </div>
+                        </a>
+                        """
+                        st.markdown(google_html, unsafe_allow_html=True)
                     
+                    # --- Added guaranteed spacing below the container ---
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.button("New to Prime TechHub? Create an account", on_click=lambda: st.session_state.update({"account_mode": "signup"}), use_container_width=True)
+
+                else:
+                    st.markdown("<h1 style='text-align: center;'>Create Account</h1>", unsafe_allow_html=True)
+                    st.markdown("<p style='text-align: center; color: #5f6368; font-size: 14px;'>Join Prime TechHub for a smarter home experience</p>", unsafe_allow_html=True)
                     st.write("")
-                    if st.button("Already have an account? Sign in"):
-                        st.session_state['account_mode'] = "login"
-                        st.rerun()
-        else:
-            # Dashboard View
-            customer = st.session_state['current_customer']
-            st.subheader(f"Welcome, {customer['name']}")
+
+                    with st.container(border=True):
+                        with st.form("pro_signup", clear_on_submit=True):
+                            name = st.text_input("Full Name")
+                            email = st.text_input("Email Address")
+                            password = st.text_input("Password", type="password")
+                            btn_reg = st.form_submit_button("CREATE ACCOUNT", use_container_width=True)
+                            
+                            if btn_reg:
+                                if not name or not email or not password:
+                                    st.error("Please fill all fields to continue.")
+                                else:
+                                    if register_customer(name, email, password):
+                                        st.session_state['customer_logged_in'] = True
+                                        st.session_state['current_customer'] = verify_customer(email, password)
+                                        st.rerun()
+                                    else:
+                                        st.error("This email is already registered.")
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.button("Already have an account? Log in", on_click=lambda: st.session_state.update({"account_mode": "login"}), use_container_width=True)
             
-            # Simple Dashboard UI
-            c1, c2 = st.columns(2)
-            with c1:
-                st.info(f"**Profile Details**\n\nEmail: {customer['email']}")
-            with c2:
-                st.success(f"**Account Status**\n\nVerified Customer ✅")
-            
-            st.divider()
-            if st.button("Sign out"):
-                st.session_state['customer_logged_in'] = False
-                del st.session_state['current_customer']
-                st.rerun()
+            else:
+                # --- PROFESSIONAL LOGGED-IN DASHBOARD VIEW ---
+                customer = st.session_state['current_customer']
+                st.markdown(f"<h1>Hello, {customer['name'].split()[0]}! 👋</h1>", unsafe_allow_html=True)
+                
+                with st.container(border=True):
+                    c1, c2 = st.columns(2)
+                    c1.metric("Account Status", "Verified")
+                    c2.metric("Membership", "Standard")
+                    
+                    st.divider()
+                    st.write(f"📧 **Registered Email:** {customer['email']}")
+                    
+                    # --- DYNAMIC ORDER HISTORY ---
+                    st.write("📦 **Recent Orders:**")
+                    customer_orders = get_customer_orders(customer['id'])
+                    
+                    if customer_orders:
+                        import pandas as pd
+                        df_orders = pd.DataFrame(customer_orders, columns=["Product", "Price", "Date"])
+                        st.dataframe(df_orders, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No orders placed yet. Time to start shopping!")
+                
+                st.write("")
+                if st.button("Sign Out", type="primary", use_container_width=True):
+                    st.session_state['customer_logged_in'] = False
+                    st.session_state['current_customer'] = None
+                    st.rerun()
 
 if __name__ == "__main__":
     main()
