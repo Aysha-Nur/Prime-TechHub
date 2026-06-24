@@ -1,8 +1,10 @@
 import streamlit as st
+# --- NEW: FORCE ENTERPRISE WIDE LAYOUT ---
+st.set_page_config(page_title="Prime TechHub", layout="wide", initial_sidebar_state="collapsed")
 import sqlite3
 import pandas as pd
 
-from database import get_customer_orders, process_checkout
+from database import get_customer_orders, process_checkout, verify_admin
 
 st.set_page_config(page_title="Prime TechHub", layout="wide")
 # UI POLISH: Force the cursor to be a pointer (hand) on dropdowns
@@ -102,55 +104,144 @@ def get_orders():
 def main():
     setup_database() # <--- NEW: This ensures your database updates silently in the background
     
-    st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Go to:", ["Storefront", "Cart", "My Account", "Admin Dashboard"])
+    from streamlit_option_menu import option_menu
 
- # 1. STOREFRONT PAGE
-    if page == "Storefront":
-        st.title("Prime TechHub: Smart Home Devices")
+    # --- ENTERPRISE UI STYLING (Layout Fixes) ---
+    st.markdown("""
+        <style>
+            /* Hide Default Streamlit Clutter */
+            footer {visibility: hidden;}
+            header {background-color: transparent !important;}
+            
+            /* ABSOLUTE ZERO TOP SPACE - Pulls app completely to the ceiling */
+            .block-container {
+                padding-top: 0rem !important; 
+                padding-bottom: 0rem !important;
+                margin-top: 0rem !important;
+                max-width: 95% !important; 
+            }
+            div[data-testid="stAppViewBlockContainer"] {
+                padding-top: 1rem !important;
+            }
+            
+            /* Nordic Minimalist Global Overrides */
+            hr {
+                border-color: #E0E0E0 !important;
+                opacity: 1.0;
+            }
+            
+            /* Hide the default "Press Enter to apply" text */
+            div[data-testid="InputInstructions"] {
+                display: none !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+   # =====================================================================
+    # 1. ENTERPRISE LEFT SIDEBAR NAVIGATION
+    # =====================================================================
+    menu_options = ["Home", "Filters", "Cart", "Account", "Settings", "FAQ", "About Us"]
+    menu_icons = ["house", "funnel", "cart3", "person", "gear", "question-circle", "info-square"] 
+    
+    if st.session_state.get('admin_logged_in', False):
+        menu_options.append("Admin")
+        menu_icons.append("terminal")
+
+    with st.sidebar:
+        st.markdown("<br>", unsafe_allow_html=True)
+        page = option_menu(
+            menu_title="Prime TechHub", 
+            options=menu_options,
+            icons=menu_icons,
+            menu_icon="cast",
+            default_index=0,
+            styles={
+                "container": {"padding": "0!important", "background-color": "transparent", "border": "none"},
+                "icon": {"font-size": "18px", "color": "#111111"}, 
+                "nav-link": {"font-size": "16px", "text-align": "left", "margin": "4px 0px", "color": "#111111", "font-weight": "600", "--hover-color": "#F5F5F5", "border-radius": "8px"},
+                "nav-link-selected": {"background-color": "#E6E8ED", "color": "#111111", "font-weight": "bold"},
+                "menu-title": {"cursor": "default"}
+            }
+        )
+
+    # =====================================================================
+    # 2. DYNAMIC GLOBAL HEADER (Only displays on Home & Filters)
+    # =====================================================================
+    if page in ["Home", "Filters"]:
+        head_c1, head_c2, head_c3 = st.columns([1, 2, 1])
         
-        # --- SEARCH & FILTER UI ---
-        col_search, col_filter = st.columns([2, 1])
-        with col_search:
-            search_query = st.text_input("🔍 Search products...", placeholder="Type a device name, brand, or keyword...")
-        with col_filter:
-            category_filter = st.selectbox(
-                "📁 Filter by Category", 
-                ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"], 
+        with head_c1:
+            st.markdown("""
+                <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;'>
+                    <span style='font-weight: 900; font-size: 38px; letter-spacing: -1px; line-height: 1; color: black;'>Prime TechHub</span>
+                    <span style='color: black; font-size: 14px; margin-top: 4px;'>Smart Home Devices</span>
+                </div>
+                """, unsafe_allow_html=True)
+            
+        with head_c2:
+            st.markdown("<div style='margin-top: 18px;'></div>", unsafe_allow_html=True)
+            product_names = [
+                "Aura Smart Bulb (RGB)", 
+                "Acoustic Echo Smart Speaker", 
+                "AquaLeak Smart Sensor", 
+                "BioMetric Smart Lock Pro", 
+                "Camera - PrimeVision 4K", 
+                "Doorbell Cam Pro"
+            ]
+            
+            global_search = st.selectbox(
+                "Search", 
+                options=product_names, 
                 index=None, 
-                placeholder="Search or select a category..."
+                placeholder="Search devices...", 
+                label_visibility="collapsed"
             )
+            
+        with head_c3:
+            st.write("")
+    else:
+        # Failsafe: Ensures the variable exists so code on other pages doesn't crash
+        global_search = None
 
-        # Fetch products from backend database
+    # 1. STOREFRONT PAGE
+    if page == "Home":
+        # --- HORIZONTAL CATEGORY PILLS ---
+        category_filter = st.radio(
+            "Filter by Category",
+            ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"],
+            horizontal=True, 
+            label_visibility="collapsed"
+        )
+        st.write("") # Small spacing below categories
+
+        # Fetch products
         products_df = get_products()
         
         if products_df.empty:
             st.warning("The inventory is currently empty. Please add items via the Admin Dashboard.")
         else:
-            # Track if a search filter is actively being used
+             
             is_searching = False
 
-            # --- FIX 1: APPLY CATEGORY FILTER ---
-            if category_filter is not None and category_filter != "All":
+            # Apply filters
+            if category_filter != "All":
                 products_df = products_df[products_df['category'] == category_filter]
                 is_searching = True
             
-            # --- FIX 2: ADVANCED FUZZY SEARCH (Ignores Case & Hyphens/Dashes) ---
-            # Clean up the user query string by stripping whitespace and dashes
-            clean_query = search_query.strip().lower().replace("-", "").replace(" ", "")
-            
+            # --- FIX: NOW USING THE GLOBAL SEARCH BAR AT THE TOP ---
+            safe_search = global_search if global_search is not None else ""
+            clean_query = safe_search.strip().lower().replace("-", "").replace(" ", "")
             if clean_query:
                 is_searching = True
-                # Create a temporary search column that also strips dashes and spaces from product names
+                
                 products_df['clean_name'] = products_df['name'].str.lower().str.replace("-", "", regex=False).str.replace(" ", "", regex=False)
-                # Match the sanitized strings together
+                
                 products_df = products_df[products_df['clean_name'].str.contains(clean_query, na=False)]
             
-            # --- HIDE OUT OF STOCK ITEMS ---
+            
             products_df = products_df[products_df['stock'] > 0]
 
-            # --- DYNAMIC NOT FOUND MESSAGE ---
-            # The message ONLY displays if the dataset is empty AND the user actually typed a search query
+
             if products_df.empty and is_searching:
                 st.warning("We're sorry, no such products found. Please try different keywords or browse our categories.")
             elif products_df.empty and not is_searching:
@@ -159,26 +250,39 @@ def main():
                 if 'cart' not in st.session_state:
                     st.session_state['cart'] = []
                     
-                # --- RENDER PRODUCTS ---
-                for index, row in products_df.iterrows():
-                    col1, col2, col3 = st.columns([3, 1, 1])
+                # --- FIX: ENTERPRISE E-COMMERCE GRID LAYOUT ---
+                # This breaks products into 3 neat columns instead of a massive vertical list
+                NUM_COLUMNS = 3 
+                cols = st.columns(NUM_COLUMNS)
+                
+                for i, (index, row) in enumerate(products_df.iterrows()):
+                    # Distribute products evenly across the columns
+                    col_idx = i % NUM_COLUMNS 
                     
-                    with col1:
-                        st.subheader(row['name'])
-                        st.write(f"Category: {row['category']}")
-                    with col2:
-                        st.write(f"**Price:** {row['price']} PKR")
-                        st.write(f"**Stock:** {row['stock']} units")
-                    with col3:
-                        if st.button("Add to Cart", key=f"add_{row['id']}"):
-                            st.session_state['cart'].append({
-                                "id": row['id'], 
-                                "name": row['name'], 
-                                "price": row['price']
-                            })
-                            st.toast(f"Added {row['name']} to cart!")
-                    st.divider()
-
+                    with cols[col_idx]:
+                        # Wrap each product in a neat "Card" box
+                        with cols[col_idx]:
+                            # Wrap each product in a neat "Card" box
+                            with st.container(border=True):
+                                # SURGICAL FIX: Un-bolded product name (22px), smaller but bold price (18px)
+                                st.markdown(f"<div style='font-size: 22px; font-weight: 400; margin-bottom: 5px;'>{row['name']}</div>", unsafe_allow_html=True)
+                                st.caption(f"📂 {row['category']}")
+                                st.markdown(f"<div style='font-size: 18px; font-weight: 700; margin-top: 10px; margin-bottom: 10px;'>{row['price']:,.2f} PKR</div>", unsafe_allow_html=True)
+                                
+                                # Stock alert
+                                if row['stock'] <= 20:
+                                    st.error(f"⚠️ Low Stock: {row['stock']} left")
+                                else:
+                                    st.success(f"📦 {row['stock']} available")
+                                    
+                                # Full-width add to cart button
+                                if st.button("Add to Cart", key=f"add_{row['id']}", use_container_width=True):
+                                    st.session_state['cart'].append({
+                                        "id": row['id'], 
+                                        "name": row['name'], 
+                                        "price": row['price']
+                                    })
+                                    st.toast(f"Added {row['name']} to cart!")
    # 2. ADMIN DASHBOARD PAGE
     elif page == "Admin Dashboard":
         st.title("Inventory Management")
@@ -265,15 +369,73 @@ def main():
             if st.button("Logout"):
                 st.session_state['logged_in'] = False
                 st.rerun()
+                # 5. SETTINGS PAGE
+    elif page == "Settings":
+        st.markdown("<h3 style='text-align: center; margin-bottom: 5px;'>Account Settings</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #666; margin-bottom: 30px; font-size: 14px;'>Manage your Prime TechHub preferences and security.</p>", unsafe_allow_html=True)
+        
+        # Native Streamlit tabs for a clean, organized UI
+        tab1, tab2, tab3 = st.tabs(["👤 Profile", "🔔 Notifications", "🔒 Security"])
+        
+        with tab1:
+            st.markdown("#### Personal Information")
+            st.text_input("Full Name", placeholder="e.g., Shafqat Ali")
+            st.text_input("Email Address", placeholder="Enter your email")
+            st.text_input("Phone Number", placeholder="+92 XXX XXXXXXX")
+            st.button("Save Profile Changes")
+            
+        with tab2:
+            st.markdown("#### Notification Preferences")
+            st.toggle("Order Updates", value=True, help="Receive emails about your order status.")
+            st.toggle("Promotions & Offers", value=False, help="Receive emails about new smart home devices.")
+            st.toggle("Security Alerts", value=True, disabled=True, help="Mandatory alerts for unusual account activity.")
+            
+        with tab3:
+            st.markdown("#### Account Security")
+            st.text_input("Current Password", type="password")
+            st.text_input("New Password", type="password")
+            st.button("Update Password")
+            
+            # --- COMPACT DANGER ZONE START ---
+            # --- COMPACT DANGER ZONE START ---
+            
+            # FIX 1: Replaced st.divider() with an HTML line to pull the whole block UP
+            st.markdown("""
+                <hr style='margin-top: 20px; margin-bottom: 10px; border: none; border-top: 1px solid #e6e6e6;'>
+                <h4 style='margin-top: 0px; margin-bottom: 5px; padding-bottom: 0px;'>Danger Zone</h4>
+                
+                <style>
+                    /* FIX 2: Set margin-top to -5px to pull the button comfortably close to the text */
+                    button[kind="primary"] {
+                        margin-top: 10px !important;       
+                        background-color: transparent !important;
+                        border-color: #FF0000 !important; 
+                        color: #FF0000 !important;        
+                    }
+                    button[kind="primary"]:hover {
+                        background-color: #fff0f0 !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+            
+            st.button("Delete Account", type="primary")
+            # --- COMPACT DANGER ZONE END ---
+
+            # 6. ABOUT US PAGE
+    elif page == "About Us":
+             st.title("🏢 About Prime TechHub")
+             st.info("Company mission and system architecture details.")
+                # We will build this out next.
                         
     # 3. CART PAGE
     elif page == "Cart":
-        st.title("🛒 Secure Checkout")
+        # SURGICAL FIX: Shrunk the massive checkout title to a professional h3 tag
+        st.markdown("<h3 style='margin-bottom: 20px; font-size: 26px;'>🛒 Secure Checkout</h3>", unsafe_allow_html=True)
         
-        # --- NEW: ENFORCE CUSTOMER LOGIN ---
+        # --- ENFORCE CUSTOMER LOGIN ---
         if not st.session_state.get('customer_logged_in') or st.session_state.get('current_customer') is None:
             st.warning("🔒 Please sign in to your Prime TechHub account to view your cart and checkout.")
-            st.info("Navigate to the 'My Account' tab in the sidebar to log in or register.")
+            st.info("Navigate to the 'Account' tab in the sidebar to log in or register.")
             
         elif 'receipt' in st.session_state:
             st.success("✅ Payment Successful! Your order has been confirmed.")
@@ -322,84 +484,181 @@ def main():
                     elif pay_method == "Credit/Debit Card" and c_card.replace(" ", "") != "4242424242424242":
                         st.error("Payment Failed: Invalid Card Number. Please use the testing card.")
                     else:
-                        # --- NEW: PASS THE CUSTOMER ID TO THE DATABASE ---
+                         # --- NEW: PASS THE CUSTOMER ID TO THE DATABASE ---
                         active_customer_id = st.session_state['current_customer']['id']
                         
-                        if process_checkout(st.session_state['cart'], active_customer_id):
-                            import random
-                            st.session_state['receipt'] = {
-                                "order_id": f"PTH-{random.randint(1000, 9999)}",
-                                "name": c_name,
-                                "address": c_address,
-                                "method": pay_method,
-                                "total": total_price,
-                                "items": len(st.session_state['cart'])
-                            }
-                            st.session_state['cart'] = [] 
-                            st.rerun()
-                        else:
-                            st.error("Checkout failed. Database error.")
+                        import time
+                        # --- ENTERPRISE UPGRADE: Loading Spinner ---
+                        with st.spinner("🔒 Processing Secure Payment through Gateway..."):
+                            time.sleep(1.5) # Simulated network delay for realism
+                            
+                            if process_checkout(st.session_state['cart'], active_customer_id):
+                                import random
+                                st.session_state['receipt'] = {
+                                    "order_id": f"PTH-{random.randint(1000, 9999)}",
+                                    "name": c_name,
+                                    "address": c_address,
+                                    "method": pay_method,
+                                    "total": total_price,
+                                    "items": len(st.session_state['cart'])
+                                }
+                                st.session_state['cart'] = [] 
+                                st.rerun()
+                            else:
+                                st.error("Checkout failed. Database error.")
 
                             
-    # 4. MY ACCOUNT PAGE
-    elif page == "My Account":
-        # Centering the UI
-        _, col_mid, _ = st.columns([1, 2, 1])
+   # 4. ACCOUNT PAGE
+    elif page == "Account":
+        # --- ENTERPRISE UI STYLING (Hide "Press Enter" Tooltips) ---
+        st.markdown("""
+            <style>
+                /* Hides tooltip */
+                [data-testid="InputInstructions"] { display: none !important;
+                }
+                /* FIX 1: Shrinks the text of the "Create an account" button (ignores the SIGN IN button) */
+                div[data-testid="stButton"] button p {
+                    font-size: 13px !important; 
+                }
+                /* 3. THE TRUE ARROW FIX: Targets the top header bar directly, bypassing the broken ID name */
+        header[data-testid="stHeader"] {
+            background: transparent !important; 
+            z-index: 999 !important; /* Physically pushes the arrow container ABOVE our black banner */
+        }
+        
+        header[data-testid="stHeader"] button {
+            filter: invert(1) brightness(2) !important; /* Forcefully flips the dark ink to pure white */
+        }
+        /* 4. Hides the browser's native extra eye icon so only Streamlit's clean eye remains */
+        input::-ms-reveal,
+        input::-ms-clear {
+            display: none !important;
+        }
+        
+        input::-webkit-credentials-auto-fill-button {
+            display: none !important;
+            visibility: hidden !important;
+        }
+            </style>
+        """, unsafe_allow_html=True)
+        
+       # --- 1. PREMIUM SAMSUNG-STYLE HEADER (Thicker & Fixed) ---
+        st.markdown("""
+            <style>
+                .samsung-header {
+                    position: fixed;
+                    top: 0px;
+                    left: 0px;
+                    width: 100vw;
+                    background-color: #111111;
+                    /* Increased top and bottom padding from 12/15px to 35px to make it thick */
+                    padding: 25px 0px 30px 60px; 
+                    z-index: 99; 
+                }
+            </style>
+            <div class="samsung-header">
+                <span style="color: #FFFFFF; font-size: 24px; font-weight: 600; letter-spacing: -0.5px;">Prime TechHub Account</span>
+            </div>
+            
+            <div style="margin-top: 110px;"></div> 
+        """, unsafe_allow_html=True)
 
-        # --- Safely initialize ALL session states so the KeyError never happens ---
+        # Centering the UI perfectly for Wide Mode
+        _, col_mid, _ = st.columns([1.5, 1, 1.5])
+
+        # --- Safely initialize ALL session states ---
         if 'customer_logged_in' not in st.session_state:
             st.session_state['customer_logged_in'] = False
+        if 'admin_logged_in' not in st.session_state: # NEW: Admin tracking
+            st.session_state['admin_logged_in'] = False
         if 'current_customer' not in st.session_state:
             st.session_state['current_customer'] = None
         if 'account_mode' not in st.session_state:
             st.session_state['account_mode'] = "login"
 
         with col_mid:
-            # Check if logged in AND the customer data actually exists
-            if not st.session_state['customer_logged_in'] or st.session_state['current_customer'] is None:
+            # Check if NO ONE is logged in
+            if not st.session_state['customer_logged_in'] and not st.session_state['admin_logged_in']:
                 if st.session_state['account_mode'] == "login":
-                    st.markdown("<h1 style='text-align: center;'>Sign in</h1>", unsafe_allow_html=True)
-                    st.markdown("<p style='text-align: center; color: #5f6368; font-size: 14px;'>to continue to your Prime TechHub Dashboard</p>", unsafe_allow_html=True)
-                    st.write("")
+                   # SURGICAL FIX: Negative top margin explicitly drags the Sign In box up
+                    st.markdown("<h3 style='text-align: center; margin-top: -35px; margin-bottom: 0px; font-size: 24px;'>Login / Register</h3>", unsafe_allow_html=True)
+                    st.markdown("<p style='text-align: center; color: #5f6368; font-size: 12px; margin-top: 4px;'>to continue to your Prime TechHub Dashboard</p>", unsafe_allow_html=True)
+
 
                     with st.container(border=True):
-                        with st.form("pro_login", clear_on_submit=True):
-                            email = st.text_input("Email Address")
+                        # FIX 1: clear_on_submit=False prevents inputs from vanishing on error
+                        with st.form("pro_login", clear_on_submit=False): 
+                            email = st.text_input("Email / Username")
                             password = st.text_input("Password", type="password")
                             btn_login = st.form_submit_button("SIGN IN", use_container_width=True)
                             
                             if btn_login:
-                                customer = verify_customer(email, password)
-                                if customer:
-                                    st.session_state['customer_logged_in'] = True
-                                    st.session_state['current_customer'] = customer
+                                # FIX 2: Security Fork - Check Admin First
+                                admin_user = verify_admin(email, password) 
+                                if admin_user:
+                                    st.session_state['admin_logged_in'] = True
                                     st.rerun()
                                 else:
-                                    st.error("Account not found. Please check your details.")
+                                    # If not admin, check customer
+                                    customer = verify_customer(email, password)
+                                    if customer:
+                                        st.session_state['customer_logged_in'] = True
+                                        st.session_state['current_customer'] = customer
+                                        st.rerun()
+                                    else:
+                                        st.error("Account not found. Please check your credentials.")
 
-                        st.markdown("<p style='text-align: center; font-weight: bold; font-size: 14px; margin-top: -5px; margin-bottom: 15px; color: #70757a;'>OR</p>", unsafe_allow_html=True)
-                        
-                        google_html = """
-                        <a href="https://github.com/Aysha-Nur/Prime-TechHub#authentication-notice" target="_blank" style="text-decoration: none; color: inherit; width: 100%;">
-                            <div style="background-color: white; color: #5f6368; border: 1px solid #dadce0; border-radius: 4px; padding: 8px 20px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 15px;">
-                                <img src="https://img.icons8.com/color/48/000000/google-logo.png" style="width: 18px; margin-right: 10px;"/>
-                                Sign in with Google
-                            </div>
-                        </a>
-                        """
-                        st.markdown(google_html, unsafe_allow_html=True)
+                    st.markdown("<p style='text-align: center; font-weight: bold; font-size: 14px; margin-top: -5px; margin-bottom: 15px; color: #70757a;'>OR</p>", unsafe_allow_html=True)
                     
-                    # --- Added guaranteed spacing below the container ---
-                    st.markdown("<br>", unsafe_allow_html=True)
+                    google_html = """
+                    <style>
+                        .google-btn-custom {
+                            background-color: white;
+                            color: #5f6368;
+                            border: 1px solid #dadce0;
+                            border-radius: 4px;
+                            padding: 8px 20px;
+                            font-size: 14px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            width: 100%;
+                            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                            margin-bottom: 15px;
+                            transition: background-color 0.2s ease;
+                        }
+                        /* This is the line that creates the grey toast shadow when hovered */
+                            .google-btn-custom:hover {
+                            background-color: #f1f3f4 !important; 
+                        }
+                    </style>
+                    <a href="https://github.com/Aysha-Nur/Prime-TechHub#authentication-notice" target="_blank" style="text-decoration: none; color: inherit; width: 100%;">
+                        <div class="google-btn-custom">
+                            <img src="https://img.icons8.com/color/48/000000/google-logo.png" style="width: 18px; margin-right: 10px;"/>
+                            Sign in with Google
+                        </div>
+                    </a>
+                    """
+                    st.markdown(google_html, unsafe_allow_html=True)
+                
                     st.button("New to Prime TechHub? Create an account", on_click=lambda: st.session_state.update({"account_mode": "signup"}), use_container_width=True)
-
+                    # --- BOTTOM RIGHT WATERMARK ---
+                    st.markdown("""
+                        <div style="position: fixed; bottom: 15px; right: 25px; color: #b0b0b0; font-size: 22px; font-weight: 600; letter-spacing: 0.5px; z-index: 100;">
+                            Prime TechHub Account
+                        </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.markdown("<h1 style='text-align: center;'>Create Account</h1>", unsafe_allow_html=True)
-                    st.markdown("<p style='text-align: center; color: #5f6368; font-size: 14px;'>Join Prime TechHub for a smarter home experience</p>", unsafe_allow_html=True)
-                    st.write("")
+                    # SURGICAL FIX: Converted h1 to a strictly sized h3
+                    st.markdown("<h3 style='text-align: center; margin-bottom: 0px; font-size: 28px;'>Create Account</h3>", unsafe_allow_html=True)
+                    st.markdown("<p style='text-align: center; color: #5f6368; font-size: 13px; margin-top: 5px;'>Join Prime TechHub for a smarter home experience</p>", unsafe_allow_html=True)
+
 
                     with st.container(border=True):
-                        with st.form("pro_signup", clear_on_submit=True):
+                        # FIX 1: clear_on_submit=False prevents inputs from vanishing
+                        with st.form("pro_signup", clear_on_submit=False):
                             name = st.text_input("Full Name")
                             email = st.text_input("Email Address")
                             password = st.text_input("Password", type="password")
@@ -416,11 +675,11 @@ def main():
                                     else:
                                         st.error("This email is already registered.")
                     
-                    st.markdown("<br>", unsafe_allow_html=True)
+                    
                     st.button("Already have an account? Log in", on_click=lambda: st.session_state.update({"account_mode": "login"}), use_container_width=True)
             
-            else:
-                # --- PROFESSIONAL LOGGED-IN DASHBOARD VIEW ---
+            # Show Customer Dashboard
+            elif st.session_state['customer_logged_in'] and st.session_state['current_customer']:
                 customer = st.session_state['current_customer']
                 st.markdown(f"<h1>Hello, {customer['name'].split()[0]}! 👋</h1>", unsafe_allow_html=True)
                 
@@ -432,7 +691,7 @@ def main():
                     st.divider()
                     st.write(f"📧 **Registered Email:** {customer['email']}")
                     
-                    # --- DYNAMIC ORDER HISTORY ---
+                    # --- DYNAMIC ORDER HISTORY ---                    
                     st.write("📦 **Recent Orders:**")
                     customer_orders = get_customer_orders(customer['id'])
                     
@@ -442,11 +701,19 @@ def main():
                         st.dataframe(df_orders, use_container_width=True, hide_index=True)
                     else:
                         st.info("No orders placed yet. Time to start shopping!")
+
                 
-                st.write("")
                 if st.button("Sign Out", type="primary", use_container_width=True):
                     st.session_state['customer_logged_in'] = False
                     st.session_state['current_customer'] = None
+                    st.rerun()
+                    
+            # Show Admin Route Notification
+            elif st.session_state['admin_logged_in']:
+                st.success("✅ Signed in as System Administrator.")
+                st.info("Please use the '⚙️ Admin Dashboard' tab in the side menu to manage Prime TechHub.")
+                if st.button("Sign Out", type="primary", use_container_width=True):
+                    st.session_state['admin_logged_in'] = False
                     st.rerun()
 
 if __name__ == "__main__":

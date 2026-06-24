@@ -1,51 +1,32 @@
 import sqlite3
+import pandas as pd
 
 def init_db():
-    # Connect to SQLite (creates the file if it doesn't exist)
+
     conn = sqlite3.connect('techhub.db')
     cursor = conn.cursor()
 
-    # Create Users Table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL
-        )
-    ''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL)''')
 
-    # Create Products Table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            category TEXT NOT NULL,
-            price REAL NOT NULL,
-            stock INTEGER NOT NULL,
-            description TEXT
-        )
-    ''')
     
-    # Create Orders Table for Sales Logging
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_id INTEGER, 
-            product_name TEXT NOT NULL,
-            price REAL NOT NULL,
-            sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (customer_id) REFERENCES customers (id) 
-        )
-    ''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, stock INTEGER NOT NULL, description TEXT)''')
     
-    # Insert a default Admin user if the table is empty
+    cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER, product_name TEXT NOT NULL, price REAL NOT NULL, sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customers (id))''')
+    
+        
     cursor.execute("SELECT COUNT(*) FROM users")
     if cursor.fetchone()[0] == 0:
-        # Note: Plaintext password is fine for local viva defense
+
         cursor.execute("INSERT INTO users (username, password, role) VALUES ('admin', 'admin123', 'admin')")
 
-    # --- NEW: Auto-Populate Professional Inventory ---
+
     cursor.execute("SELECT COUNT(*) FROM products")
     if cursor.fetchone()[0] == 0:
         professional_products = [
@@ -65,21 +46,54 @@ def init_db():
             ("VoltGuard Wi-Fi Plug", "Smart Plug", 2000.00, 100, "Turn any standard appliance into a smart device."),
             ("Window/Door Contact Sensor", "Sensors", 1800.00, 120, "Alerts you if a window or door is left open.")
         ]
-        
-        # Insert them all into the database including descriptions
+              
         for prod in professional_products:
-            cursor.execute("INSERT INTO products (name, category, price, stock, description) VALUES (?, ?, ?, ?, ?)", 
-                           (prod[0], prod[1], prod[2], prod[3], prod[4]))
+
+            cursor.execute("INSERT INTO products (name, category, price, stock, description) VALUES (?, ?, ?, ?, ?)", (prod[0], prod[1], prod[2], prod[3], prod[4]))
         print("Professional inventory loaded successfully!")
 
     conn.commit()
     conn.close()
     print("Database built successfully.")
 
+def verify_admin(username, password):
+    conn = sqlite3.connect('techhub.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, role FROM users WHERE username=? AND password=? AND role='admin'", (username, password))
+    admin = cursor.fetchone()
+    conn.close()
+    if admin: return {"id": admin[0], "username": admin[1], "role": admin[2]}
+    return None
+
+def register_customer(name, email, password):
+    conn = sqlite3.connect('techhub.db')
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO customers (name, email, password) VALUES (?, ?, ?)", (name, email, password))
+        conn.commit()
+        success = True
+    except sqlite3.IntegrityError:
+        success = False
+    finally: conn.close()
+    return success
+
+def verify_customer(email, password):
+    conn = sqlite3.connect('techhub.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, email FROM customers WHERE email=? AND password=?", (email, password))
+    customer = cursor.fetchone()
+    conn.close()
+    if customer: return {"id": customer[0], "name": customer[1], "email": customer[2]}
+    return None
+
+def get_products():
+    conn = sqlite3.connect('techhub.db')
+    df = pd.read_sql_query("SELECT * FROM products", conn)
+    conn.close()
+    return df
 
 def get_customer_orders(customer_id):
-    """Fetches the order history for a specific logged-in customer."""
-    import sqlite3
+
     conn = sqlite3.connect('techhub.db')
     cursor = conn.cursor()
     cursor.execute("SELECT product_name, price, sale_date FROM orders WHERE customer_id=?", (customer_id,))
@@ -88,27 +102,21 @@ def get_customer_orders(customer_id):
     return orders
 
 def process_checkout(cart_items, customer_id):
-    """Processes the cart, logs the order with the customer ID, and deducts stock."""
-    import sqlite3
+
     conn = sqlite3.connect('techhub.db')
     cursor = conn.cursor()
     success = False
     try:
         for item in cart_items:
-            # 1. Insert the order with the specific customer_id
-            cursor.execute("INSERT INTO orders (customer_id, product_name, price) VALUES (?, ?, ?)", 
-                           (customer_id, item['name'], item['price']))
-            # 2. Deduct 1 from the product stock
+            cursor.execute("INSERT INTO orders (customer_id, product_name, price) VALUES (?, ?, ?)", (customer_id, item['name'], item['price']))
             cursor.execute("UPDATE products SET stock = stock - 1 WHERE id = ?", (item['id'],))
-        
+
         conn.commit()
         success = True
     except Exception as e:
         print(f"Checkout Error: {e}")
         conn.rollback()
-    finally:
-        conn.close()
-    
+    finally: conn.close()
     return success
 
 if __name__ == '__main__':
