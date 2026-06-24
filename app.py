@@ -421,11 +421,129 @@ def main():
             st.button("Delete Account", type="primary")
             # --- COMPACT DANGER ZONE END ---
 
-            # 6. ABOUT US PAGE
+    # 6. ABOUT US PAGE
     elif page == "About Us":
-             st.title("🏢 About Prime TechHub")
-             st.info("Company mission and system architecture details.")
-                # We will build this out next.
+        # --- HERO SECTION ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; font-weight: 700; margin-bottom: 5px;'>Building the Future of Home Infrastructure</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #666; margin-bottom: 35px; font-size: 16px;'>Prime TechHub is more than an e-commerce platform—it is a complete smart ecosystem.</p>", unsafe_allow_html=True)
+        
+        # --- THE ARCHITECTURE / STORY ---
+        st.markdown("### 🏗️ Our Architecture")
+        st.markdown("""
+        Prime TechHub was engineered with a strict focus on **scalable IT infrastructure and secure networking**. 
+        We recognized that modern smart homes require the same level of reliability as enterprise-level systems. 
+        That is why we built a centralized, containerized platform that ensures your smart devices communicate seamlessly, securely, and without interruption.
+        """)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- CORE VALUES (3 Column Grid) ---
+        st.markdown("### 🌟 Core Principles")
+        
+        # Native Streamlit columns create a perfect responsive grid
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.info("**🔒 Security First**")
+            st.markdown("<p style='font-size: 14px; color: #555; margin-top: -10px;'>Enterprise-grade encryption and local execution to keep your private home network completely safe.</p>", unsafe_allow_html=True)
+            
+        with col2:
+            st.info("**⚡ Seamless Flow**")
+            st.markdown("<p style='font-size: 14px; color: #555; margin-top: -10px;'>Designed to work flawlessly on standard bandwidth without requiring complex external bridges.</p>", unsafe_allow_html=True)
+            
+        with col3:
+            st.info("**🌍 Global Standards**")
+            st.markdown("<p style='font-size: 14px; color: #555; margin-top: -10px;'>Built to international IT administration networking standards, ensuring reliability anywhere in the world.</p>", unsafe_allow_html=True)
+
+        st.markdown("<br><hr style='border: none; border-top: 1px solid #e6e6e6; margin-bottom: 25px;'>", unsafe_allow_html=True)
+        
+        # --- THE VISION / LEADERSHIP SECTION ---
+        st.markdown("### 🚀 The Vision")
+        st.markdown("""
+        > *"Our goal is to bridge the gap between complex IT infrastructure and everyday consumer technology. Prime TechHub is a testament to what happens when rigorous network engineering meets intuitive user design."*
+        """)
+        
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # 7. FAQ & HELP CENTER
+    elif page == "FAQ":
+        # --- HERO SECTION ---
+        st.markdown("<h2 style='text-align: center; font-weight: 700; margin-bottom: 5px;'>How can we help?</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #666; margin-bottom: 25px; font-size: 16px;'>Search our knowledge base or browse categories below.</p>", unsafe_allow_html=True)
+        
+        # Centralized Search Bar UI (Creates a premium support center aesthetic)
+        col_spacer1, search_col, col_spacer2 = st.columns([1, 2, 1])
+        with search_col:
+            st.text_input("Search", placeholder="e.g., 'Wi-Fi pairing' or 'Reset device'...", label_visibility="collapsed")
+        
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        # --- CATEGORY 1: DEVICE SETUP & TECH ---
+        # FIX: Negative top margin (-35px) sucks the gap closed and pulls the whole page up
+        st.markdown("<h3 style='margin-top: -35px;'>🔌 Setup & Connectivity</h3>", unsafe_allow_html=True)
+        with st.expander("Are Prime TechHub devices compatible with 5GHz Wi-Fi?"):
+            st.markdown("""
+            For maximum range and wall-penetration, Prime TechHub devices are currently optimized for **2.4GHz Wi-Fi networks**. 
+            
+            *If you have a dual-band router, ensure your phone is connected to the 2.4GHz band during the initial setup process. Once paired, you can switch your phone back to 5GHz.*
+            """)
+            
+        with st.expander("How do I perform a hard factory reset?"):
+            st.markdown("""
+            If your device is unresponsive or you are moving it to a new network, follow these steps:
+            1. Unplug the device for 10 seconds.
+            2. Plug it back in.
+            3. Press and hold the physical **Action Button** for 12-15 seconds.
+            4. Release when the LED indicator blinks **rapidly in blue**.
+            
+            The device is now in pairing mode and ready to be set up in your dashboard.
+            """)
+
+        with st.expander("Do these devices work if my internet goes down?"):
+            st.markdown("Yes. While remote access from outside your home requires an active internet connection, your pre-set local automations (like scheduled lights or thermostat rules) will continue to execute locally on your home network.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # --- CATEGORY 2: ORDERS & SHIPPING ---
+        st.markdown("### 📦 Orders & Shipping")
+        with st.expander("How long does delivery typically take?"):
+            st.markdown("""
+            We offer two shipping tiers for our customers:
+            * **Standard Delivery:** 3-5 business days.
+            * **Express Delivery:** 1-2 business days.
+            
+            All orders placed before 2:00 PM are processed and shipped on the same business day.
+            """)
+            st.info("You can track your active orders in real-time by navigating to your Account Dashboard.")
+
+        with st.expander("What is your return and warranty policy?"):
+            st.markdown("""
+            We stand by our hardware. Every Prime TechHub device comes with:
+            * A **30-day money-back guarantee** for any reason.
+            * A **1-year limited hardware warranty** covering any manufacturing defects.
+            """)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # --- CATEGORY 3: SECURITY & PRIVACY ---
+        st.markdown("### 🔒 Security & Privacy")
+        with st.expander("Is my smart home data encrypted?"):
+            st.markdown("""
+            **Absolutely.** Prime TechHub utilizes AES-256 bit encryption for all data transmitted between your home devices, our servers, and your mobile application. 
+            
+            We do not sell your telemetry data to third-party advertisers. Your home is your private space, and our infrastructure is designed to keep it that way.
+            """)
+        
+        # FIX: Removed the <br> and <hr> entirely to kill the double-line defect.
+        # Added margin-top directly to the box to pull it closer to the expander above.
+        st.markdown("""
+        <div style='margin-top: 20px; text-align: center; padding: 12px; background-color: #f8f9fa; border-radius: 10px; margin-bottom: 40px;'>
+            <h4 style='margin-top: 0px; margin-bottom: 5px;'>Still need help?</h4>
+            <p style='color: #666; font-size: 14px; margin-bottom: 0px;'>Our technical support team is available 24/7 to assist you with your smart home setup.</p>
+            <p style='font-weight: bold; color: #111; margin-top: 5px; margin-bottom: 0px;'>support@primetechhub.com</p>
+        </div>
+        """, unsafe_allow_html=True)
                         
     # 3. CART PAGE
     elif page == "Cart":
@@ -510,6 +628,24 @@ def main():
                             
    # 4. ACCOUNT PAGE
     elif page == "Account":
+        # --- LOGIN PAGE TEXT STYLING ---
+        st.markdown("""
+            <style>
+                /* 1. Targets the text input labels (Email/Username & Password) */
+                div[data-testid="stTextInput"] label p {
+                    color: #555555 !important;
+                    font-weight: 600 !important;
+                    font-size: 15px !important;
+                }
+                
+                /* 2. Targets BOTH standard buttons AND Form Submit buttons (SIGN IN) */
+                div[data-testid="stButton"] button p,
+                div[data-testid="stFormSubmitButton"] button p {
+                    color: #555555 !important;
+                    font-weight: 600 !important;
+                }
+            </style>
+        """, unsafe_allow_html=True)
         # --- ENTERPRISE UI STYLING (Hide "Press Enter" Tooltips) ---
         st.markdown("""
             <style>
