@@ -27,6 +27,16 @@ import sqlite3
 import pandas as pd
 from streamlit_option_menu import option_menu
 
+_CATEGORY_META = {
+    "Camera":         ("bi-camera-video-fill", "linear-gradient(135deg,#203a43,#1a8fa8)"),
+    "Lighting":       ("bi-lightbulb-fill", "linear-gradient(135deg,#1a8fa8,#5bc0de)"),
+    "Smart Plug":     ("bi-plug-fill", "linear-gradient(135deg,#1a8fa8,#28a745)"),
+    "Hub/Controller": ("bi-cpu-fill", "linear-gradient(135deg,#6f42c1,#1a8fa8)"),
+    "Sensors":        ("bi-activity", "linear-gradient(135deg,#ff7e5f,#feb47b)"),
+    "Networking":     ("bi-wifi", "linear-gradient(135deg,#00c6ff,#0072ff)"),
+    "Audio":          ("bi-speaker-fill", "linear-gradient(135deg,#7f00ff,#e100ff)"),
+}
+
 
 # ================================================================
 # GLOBAL CSS — injected once at the top, never inside page blocks.
@@ -65,7 +75,8 @@ def inject_global_css():
         div[data-testid="InputInstructions"] { display: none !important; }
         hr { border-color: var(--border-light) !important; opacity: 1; }
         div[data-baseweb="select"] > div,
-        div[data-baseweb="select"] input { cursor: pointer !important; }
+        div[data-baseweb="select"] input { cursor: pointer !important;
+        }
 
         /* ============================================================
            SIDEBAR — elevated floating card aesthetic
@@ -75,27 +86,6 @@ def inject_global_css():
             background-color: #ffffff !important;
             box-shadow: 4px 0 28px rgba(0, 0, 0, 0.09) !important;
             border-right: 1px solid #f2f2f2 !important;
-        }
-        /* Collapse/expand toggle button → ☰ hamburger */
-        button[data-testid="collapsedControl"],
-        button[data-testid="baseButton-headerNoPadding"] {
-            background-color: #ffffff !important;
-            border-radius: 0 8px 8px 0 !important;
-            box-shadow: 3px 0 12px rgba(0,0,0,0.08) !important;
-            border: 1px solid #f0f0f0 !important;
-            border-left: none !important;
-            width: 32px !important;
-        }
-        button[data-testid="collapsedControl"] svg,
-        button[data-testid="baseButton-headerNoPadding"] svg {
-            display: none !important;
-        }
-        button[data-testid="collapsedControl"]::after,
-        button[data-testid="baseButton-headerNoPadding"]::after {
-            content: "\2630"; /* ☰ hamburger */
-            font-size: 16px;
-            color: #444;
-            line-height: 1;
         }
 
         /* ============================================================
@@ -166,30 +156,7 @@ def inject_global_css():
             color: var(--teal-accent) !important;
             font-weight: 700 !important;
         }
-
-        /* ============================================================
-           ACCOUNT PAGE INPUT LABELS
-        ============================================================ */
-        div[data-testid="stTextInput"] label p {
-            color: var(--text-muted) !important;
-            font-weight: 600 !important;
-            font-size: 14px !important;
-        }
-        div[data-testid="stFormSubmitButton"] button p {
-            color: #ffffff !important;
-            font-weight: 600 !important;
-            font-size: 14px !important;
-        }
-        div[data-testid="stButton"] button p {
-            font-weight: 500 !important;
-            font-size: 14px !important;
-        }
-        /* Password field — hide browser's native eye/clear icons */
-        input::-ms-reveal, input::-ms-clear { display: none !important; }
-        input::-webkit-credentials-auto-fill-button {
-            display: none !important; visibility: hidden !important;
-        }
-
+        
         /* ============================================================
            HORIZONTAL SHOWCASE SCROLL (Samsung-style)
         ============================================================ */
@@ -269,6 +236,109 @@ def inject_global_css():
             letter-spacing: 0.5px; z-index: 50; pointer-events: none;
             user-select: none;
         }
+        /* ── FIX 1: Primary button — use data-testid (more reliable than kind attr) ── */
+        button[data-testid="baseButton-primary"] {
+            background: linear-gradient(135deg, #203a43, #1a8fa8) !important;
+            border: none !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            border-radius: 8px !important;
+        }
+        button[data-testid="baseButton-primary"]:hover {
+            opacity: 0.88 !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* ══════════════════════════════════════════════════════
+           FIX 4: INPUT DOUBLE-BORDER — single clean border only
+           Root cause: CSS border on input + Streamlit wrapper
+           border + st.container(border=True) = 3 stacked borders
+        ═══════════════════════════════════════════════════════ */
+        div[data-testid="stTextInput"] input {
+            border: none !important;
+            border-radius: 6px !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            padding: 6px 12px !important;
+            cursor: text !important;
+            pointer-events: all !important;
+            font-size: 14px !important;
+        }
+        /* Single border lives here — on the wrapper only */
+        div[data-testid="stTextInput"] > div[data-baseweb="input"] {
+            border: 1.5px solid #e0e0e0 !important;
+            border-radius: 8px !important;
+            background: #ffffff !important;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+            pointer-events: all !important;
+        }
+        div[data-testid="stTextInput"] > div[data-baseweb="input"]:focus-within {
+            border-color: #1a8fa8 !important;
+            box-shadow: 0 0 0 3px rgba(26,143,168,0.10) !important;
+        }
+        div[data-testid="stTextInput"] > div[data-baseweb="input"]:hover {
+            border-color: #1a8fa8 !important;
+        }
+
+        /* ══════════════════════════════════════════════════════
+           FIX 3: ABOUT US METRICS — revert to black
+           Remove the global teal override; scope teal only to
+           sidebar cart badge where it was intentional
+        ═══════════════════════════════════════════════════════ */
+        div[data-testid="stMetricValue"] {
+            color: #111111 !important;
+            font-weight: 800 !important;
+        }
+
+        /* ══════════════════════════════════════════════════════
+           FIX 6: SEARCH CURSOR — full surface interactive
+        ═══════════════════════════════════════════════════════ */
+        div[data-testid="stTextInput"],
+        div[data-testid="stTextInput"] > div,
+        div[data-testid="stTextInput"] > div > div,
+        div[data-testid="stTextInput"] > div[data-baseweb="input"] {
+            cursor: text !important;
+            pointer-events: all !important;
+            position: relative !important;
+            z-index: 5 !important;
+        }
+
+        /* ══════════════════════════════════════════════════════
+           FIX 7: CART BUTTON — teal primary (reliable selector)
+        ═══════════════════════════════════════════════════════ */
+        button[data-testid="baseButton-primary"],
+        button[kind="primary"],
+        .stButton button[data-testid^="baseButton"] {
+            background: linear-gradient(135deg, #203a43, #1a8fa8) !important;
+            border: none !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            border-radius: 8px !important;
+            transition: opacity 0.2s ease !important;
+        }
+        button[data-testid="baseButton-primary"]:hover {
+            opacity: 0.88 !important;
+        }
+        div[data-testid="stFormSubmitButton"] > button {
+            background: linear-gradient(135deg, #203a43, #1a8fa8) !important;
+            border: none !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            border-radius: 8px !important;
+            width: 100% !important;
+        }
+
+        /* ══════════════════════════════════════════════════════
+           FIX 2: FAQ last box — light teal only
+        ═══════════════════════════════════════════════════════ */
+        .faq-contact-box {
+            margin-top: 24px;
+            text-align: center;
+            padding: 20px;
+            background: #e8f5f8 !important;
+            border-radius: 12px;
+            border: 1px solid #c0dde4;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -294,8 +364,8 @@ def init_session_state():
 # SIDEBAR NAVIGATION
 # ================================================================
 def render_sidebar():
-    menu_options = ["Home", "Filters", "Cart", "Account", "Settings", "FAQ", "About Us"]
-    menu_icons   = ["house-fill", "funnel-fill", "cart3-fill", "person-fill",
+    menu_options = ["Home", "Filters", "Account", "Settings", "FAQ", "About Us"]
+    menu_icons   = ["house-fill", "funnel-fill", "person-fill",
                     "gear-fill", "question-circle-fill", "info-square-fill"]
 
     if st.session_state.get("admin_logged_in"):
@@ -303,93 +373,88 @@ def render_sidebar():
         menu_icons.append("terminal-fill")
 
     with st.sidebar:
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-
-        # Sidebar logo / brand
+        # Brand block — no version string here
         st.markdown("""
-        <div style='padding: 0 16px 16px 16px; border-bottom: 1px solid #f2f2f2;'>
-            <span style='font-weight: 800; font-size: 20px; letter-spacing: -0.5px; color: #111;'>
-                Prime TechHub
+        <div style='padding: 18px 16px 10px 16px;'>
+            <span style='font-weight:800; font-size:19px;
+                         letter-spacing:-0.5px; color:#111;'>
+                Main Menu
             </span><br>
-            <span style='font-size: 11.5px; color: #888; font-weight: 500;'>Smart Home Devices</span>
         </div>
-        <div style='height:8px'></div>
+        <hr style='margin: 0 0 6px 0; border-color:#f0f0f0;'>
+        """, unsafe_allow_html=True)
+
+        # "Main Menu" label — single instance, non-clickable
+        st.markdown("""
+        <div style='padding: 4px 16px 8px 16px;'>
+            <span style='font-size: 10px; font-weight: 700; color: #bbb;
+                         text-transform: uppercase; letter-spacing: 1.8px;'>
+                Prime TechHub
+            </span>
+        </div>
         """, unsafe_allow_html=True)
 
         page = option_menu(
-            menu_title=None,          # title already rendered above
+            menu_title=None,
             options=menu_options,
             icons=menu_icons,
-            menu_icon="cast",
             default_index=0,
             styles={
-                "container": {"padding": "0 !important", "background-color": "transparent"},
-                "icon": {"font-size": "16px", "color": "#203a43"},
+                "container":         {"padding": "0!important",
+                                      "background-color": "transparent"},
+                "icon":              {"font-size": "15px", "color": "#203a43"},
                 "nav-link": {
-                    "font-size": "14.5px", "text-align": "left",
-                    "margin": "3px 0", "color": "#333",
-                    "font-weight": "500", "--hover-color": "#f0f5f6",
-                    "border-radius": "8px", "padding": "9px 14px"
+                    "font-size":     "14px",
+                    "text-align":    "left",
+                    "margin":        "2px 0",
+                    "color":         "#333",
+                    "font-weight":   "500",
+                    "--hover-color": "#f0f5f6",
+                    "border-radius": "8px",
+                    "padding":       "9px 14px",
                 },
                 "nav-link-selected": {
                     "background-color": "#e8f5f8",
-                    "color": "#1a8fa8",
-                    "font-weight": "700"
+                    "color":            "#1a8fa8",
+                    "font-weight":      "700",
                 },
             }
         )
 
-        # Cart badge — only shows when cart has items
+        # Cart badge — only when cart has items
         cart_count = len(st.session_state.get("cart", []))
         if cart_count > 0:
             st.markdown(f"""
-            <div class="cart-badge">
-                <i class="bi bi-cart3" style="color:white; font-size:18px;"></i>
-                <span>{cart_count} item{'s' if cart_count != 1 else ''} in cart</span>
+            <div style='margin: 8px 12px 0 12px; padding: 9px 14px;
+                        background: linear-gradient(135deg, #203a43, #1a8fa8);
+                        border-radius: 10px; display:flex;
+                        align-items:center; gap:10px;'>
+                <i class="bi bi-cart3"
+                   style="color:white; font-size:16px;"></i>
+                <span style="color:white; font-weight:600; font-size:13px;">
+                    {cart_count} item{'s' if cart_count != 1 else ''} in cart
+                </span>
             </div>
             """, unsafe_allow_html=True)
 
-        # Sidebar footer
-        st.markdown("""
-        <div style='position: absolute; bottom: 20px; left: 0; right: 0;
-                    padding: 0 16px; border-top: 1px solid #f2f2f2; padding-top: 14px;'>
-            <span style='font-size: 11px; color: #bbb;'>v1.0.0 &nbsp;·&nbsp; Prime TechHub</span>
-        </div>
-        """, unsafe_allow_html=True)
+        # NO version string anywhere in sidebar — completely removed
 
     return page
 
-# ─────────────────────────────────────────────
-# HELPER: builds the HTML for horizontal showcase
-# ─────────────────────────────────────────────
-_CATEGORY_META = {
-    "Camera":         ("bi-camera-video-fill",  "linear-gradient(135deg,#0f2027,#203a43)"),
-    "Lighting":       ("bi-lightbulb-fill",      "linear-gradient(135deg,#1a0a2e,#2d1b69)"),
-    "Smart Plug":     ("bi-plug-fill",           "linear-gradient(135deg,#0a1f28,#1a5c6b)"),
-    "Hub/Controller": ("bi-cpu-fill",            "linear-gradient(135deg,#0d1117,#1a2f4a)"),
-    "Sensors":        ("bi-activity",            "linear-gradient(135deg,#0a2818,#1a5c3a)"),
-    "Networking":     ("bi-wifi",                "linear-gradient(135deg,#0f1a35,#1a3a6b)"),
-    "Audio":          ("bi-speaker-fill",        "linear-gradient(135deg,#1a0a0f,#4a1535)"),
-}
-
 def _build_showcase_html(products_df):
-    """Returns raw HTML for the horizontal-scroll showcase strip."""
-    # Pick up to 8 featured products (one per category ideally)
     featured = products_df.drop_duplicates(subset=["category"]).head(8)
-
     cards = ""
     for _, row in featured.iterrows():
         icon, gradient = _CATEGORY_META.get(
             row["category"], ("bi-box-fill", "linear-gradient(135deg,#1a2a3a,#2c5364)")
         )
         desc_raw = str(row.get("description", ""))
-        desc = desc_raw[:58] + "…" if len(desc_raw) > 58 else desc_raw
+        desc = desc_raw[:55] + "…" if len(desc_raw) > 55 else desc_raw
 
         cards += f"""
         <div class="showcase-card">
             <div class="showcase-card-img" style="background:{gradient};">
-                <i class="bi {icon}"
-                   style="font-size:44px; color:rgba(255,255,255,0.88);"></i>
+                <i class="bi {icon}" style="font-size:42px;color:rgba(255,255,255,0.88);"></i>
             </div>
             <div class="showcase-card-body">
                 <div class="s-cat">{row["category"]}</div>
@@ -399,103 +464,164 @@ def _build_showcase_html(products_df):
             </div>
         </div>"""
 
+    # NO swipe text — clean interface
     return f"""
-    <div style="margin:0 0 6px 0;">
-        <span style="font-size:11px; font-weight:700; color:#1a8fa8;
-                     text-transform:uppercase; letter-spacing:1.6px;">
+    <div style="margin:0 0 8px 0;">
+        <span style="font-size:10.5px;font-weight:700;color:#1a8fa8;
+                     text-transform:uppercase;letter-spacing:1.6px;">
             <i class="bi bi-stars"></i>&nbsp; Featured Devices
         </span>
     </div>
-    <div class="showcase-scroll">{cards}</div>
-    <p style="font-size:11px; color:#bbb; margin:-10px 0 18px 2px;">
-        ← Swipe to explore more &nbsp;
-        <i class="bi bi-arrow-right"></i>
-    </p>"""
+    <div class="showcase-scroll" style="padding-bottom:8px;">{cards}</div>"""
 
 # ================================================================
 # PAGE: HOME (Storefront)
 # Purpose: Hero banner, category chips, 3-column product grid
 # ================================================================
 def page_home():
-    # ── Header row: Brand + Search + Cart chip ──────────────────
-    h1, h2, h3 = st.columns([1, 2, 0.7])
+    # ── Header ──────────────────────────────────────────────────────
+    h1, h2, h3 = st.columns([1, 2.2, 0.55])
 
     with h1:
         st.markdown("""
-        <div style='padding-top:6px;'>
-            <span style='font-weight:900; font-size:28px; letter-spacing:-0.8px; color:#111;'>
-                Prime TechHub
-            </span><br>
-            <span style='color:#888; font-size:12px; font-weight:500;'>Smart Home Devices</span>
+        <div style='padding-top:5px;'>
+            <span style='font-weight:900;font-size:24px;letter-spacing:-0.8px;color:#111;'>
+                Prime TechHub</span><br>
+            <span style='color:#999;font-size:11px;font-weight:500;'>Smart Home Devices</span>
         </div>""", unsafe_allow_html=True)
 
     with h2:
-        all_names = get_products()["name"].tolist() if not get_products().empty else []
-        global_search = st.selectbox(
-            "Search", options=all_names, index=None,
-            placeholder="🔍  Search smart devices…",
-            label_visibility="collapsed"
+        # CSS scoped to this column only — fixes ghost label hit-testing
+        st.markdown("""
+        <style>
+            /* Remove invisible label ghost that eats pointer events */
+            div[data-testid="stTextInput"] label {
+                height: 0 !important;
+                overflow: hidden !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                pointer-events: none !important;
+            }
+            /* Full surface clickable — override any stacking suppression */
+            div[data-testid="stTextInput"],
+            div[data-testid="stTextInput"] > div,
+            div[data-testid="stTextInput"] > div[data-baseweb="input"],
+            div[data-testid="stTextInput"] input {
+                pointer-events: all !important;
+                cursor: text !important;
+                position: relative !important;
+                z-index: 20 !important;
+            }
+            /* Single clean border — no double border */
+            div[data-testid="stTextInput"] > div[data-baseweb="input"] {
+                border: 1.5px solid #e0e0e0 !important;
+                border-radius: 25px !important;
+                background: #f8f9fa !important;
+                box-shadow: none !important;
+                transition: border-color 0.2s, box-shadow 0.2s !important;
+            }
+            div[data-testid="stTextInput"] > div[data-baseweb="input"]:focus-within,
+            div[data-testid="stTextInput"] > div[data-baseweb="input"]:hover {
+                border-color: #1a8fa8 !important;
+                background: #ffffff !important;
+                box-shadow: 0 0 0 3px rgba(26,143,168,0.10) !important;
+            }
+            div[data-testid="stTextInput"] input {
+                border: none !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                font-size: 14px !important;
+                padding: 8px 16px !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+        search_query = st.text_input(
+            "Search products",
+            placeholder="  Search smart devices 🔍…",
+            label_visibility="collapsed",
+            key="home_search"
         )
 
+        # ── Live suggestion dropdown ──────────────────────────
+        if search_query.strip():
+            all_products = get_products()
+            q = search_query.strip().lower()
+
+            # Match against name AND category
+            mask = (
+                all_products["name"].str.lower().str.contains(q, na=False) |
+                all_products["category"].str.lower().str.contains(q, na=False)
+            )
+            matches = all_products[mask & (all_products["stock"] > 0)]
+
+            if matches.empty:
+                st.markdown("""
+                <div style='background:#fff8f0; border:1px solid #ffe0b2;
+                            border-radius:8px; padding:10px 14px;
+                            font-size:13px; color:#888; margin-top:4px;'>
+                    <i class="bi bi-search"></i>
+                    &nbsp; No matching smart home products found.
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                # Suggestion pills — clicking loads product detail
+                for _, m in matches.head(5).iterrows():
+                    if st.button(
+                        f"  {m['name']}  ·  PKR {m['price']:,.0f}",
+                        key=f"suggest_{m['id']}",
+                        use_container_width=True
+                    ):
+                        st.session_state["selected_product"] = m.to_dict()
+                        st.session_state["page_override"] = None
+                        st.rerun()
+
     with h3:
-        # Cart chip — teal pill showing live item count
         cart_count = len(st.session_state.get("cart", []))
-        badge_color = "#1a8fa8" if cart_count > 0 else "#bbb"
-        st.markdown(f"""
-        <div style='padding-top:8px; text-align:right;'>
-            <span style='background:{badge_color}; color:white; font-weight:700;
-                         font-size:13px; padding:7px 14px; border-radius:20px;
-                         letter-spacing:0.2px;'>
-                <i class="bi bi-cart3"></i>&nbsp; {cart_count}
-            </span>
-            <div style='font-size:11px; color:#aaa; margin-top:4px;'>
-                item{'s' if cart_count != 1 else ''} in cart
-            </div>
-        </div>""", unsafe_allow_html=True)
+        # FIX 7: Removed "items" label text. Button click routes to Cart.
+        if st.button(f"🛒  {cart_count}", type="primary", key="hdr_cart_btn"):
+            st.session_state["page_override"] = "Cart"
+            st.rerun()
 
-    st.markdown("<hr style='margin: 0.6rem 0 1rem 0;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin:0.4rem 0 0.7rem 0;'>", unsafe_allow_html=True)
 
-    # ── Hero Banner ──────────────────────────────────────────────
+    # ── Hero Banner (reduced padding — compact) ──────────────────
     st.markdown("""
     <div style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
-                padding:52px 36px; border-radius:18px; text-align:center;
-                color:white; margin-bottom:28px;
-                box-shadow:0 10px 40px rgba(15,32,39,0.22);">
-        <div style="font-size:11px; font-weight:700; letter-spacing:2.5px;
-                    color:#7ecdd8; text-transform:uppercase; margin-bottom:12px;">
+                padding:22px 28px 20px 28px; border-radius:14px; text-align:center;
+                color:white; margin-bottom:18px;
+                box-shadow:0 6px 24px rgba(15,32,39,0.18);">
+        <div style="font-size:9.5px;font-weight:700;letter-spacing:2.5px;
+                    color:#7ecdd8;text-transform:uppercase;margin-bottom:8px;">
             <i class="bi bi-shield-check"></i>&nbsp; Trusted Smart Home Platform
         </div>
-        <h1 style="margin:0; font-size:2.6em; font-weight:800; letter-spacing:-0.5px;
-                   line-height:1.15;">
+        <h1 style="margin:0;font-size:1.9em;font-weight:800;letter-spacing:-0.5px;">
             Smart Living, Simplified.
         </h1>
-        <p style="margin:14px 0 0 0; font-size:1.05em; color:#b8d4da; max-width:520px;
-                  margin-left:auto; margin-right:auto; line-height:1.6;">
+        <p style="margin:8px auto 0 auto;font-size:0.92em;color:#b8d4da;
+                  max-width:460px;line-height:1.5;">
             Upgrade every corner of your home with Prime TechHub's curated smart device ecosystem.
         </p>
-        <div style="margin-top:22px; display:flex; justify-content:center; gap:32px;
-                    flex-wrap:wrap;">
-            <span style="font-size:13px; color:#7ecdd8;">
-                <i class="bi bi-wifi"></i>&nbsp; Wi-Fi Ready
-            </span>
-            <span style="font-size:13px; color:#7ecdd8;">
-                <i class="bi bi-shield-lock"></i>&nbsp; AES-256 Secure
-            </span>
-            <span style="font-size:13px; color:#7ecdd8;">
-                <i class="bi bi-box-seam"></i>&nbsp; Same-Day Dispatch
-            </span>
-            <span style="font-size:13px; color:#7ecdd8;">
-                <i class="bi bi-arrow-return-left"></i>&nbsp; 30-Day Returns
-            </span>
+        <div style="margin-top:14px;display:flex;justify-content:center;gap:20px;flex-wrap:wrap;">
+            <span style="font-size:11.5px;color:#7ecdd8;">
+                <i class="bi bi-wifi"></i>&nbsp;Wi-Fi Ready</span>
+            <span style="font-size:11.5px;color:#7ecdd8;">
+                <i class="bi bi-shield-lock"></i>&nbsp;AES-256 Secure</span>
+            <span style="font-size:11.5px;color:#7ecdd8;">
+                <i class="bi bi-box-seam"></i>&nbsp;Same-Day Dispatch</span>
+            <span style="font-size:11.5px;color:#7ecdd8;">
+                <i class="bi bi-arrow-return-left"></i>&nbsp;30-Day Returns</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Horizontal Showcase Strip ────────────────────────────────
+    # ── Everything below this line stays exactly as-is in your current code ──
     products_df = get_products()
 
     if not products_df.empty:
         st.markdown(_build_showcase_html(products_df), unsafe_allow_html=True)
+        # FIX 5: Vertical breathing room between showcase and grid
+        st.markdown("<div style='margin-bottom:22px;'></div>", unsafe_allow_html=True)
 
     # ── Divider + Section title ──────────────────────────────────
     st.markdown("""
@@ -529,7 +655,7 @@ def page_home():
     if category_filter != "All":
         filtered_df = filtered_df[filtered_df["category"] == category_filter]
 
-    safe_search = global_search if global_search else ""
+    safe_search = st.session_state.get("home_search", "")
     clean_query = safe_search.strip().lower().replace("-","").replace(" ","")
     if clean_query:
         filtered_df["_cn"] = (filtered_df["name"].str.lower()
@@ -1097,17 +1223,17 @@ def page_faq():
     with st.expander("Is my smart home data encrypted?"):
         st.markdown("**Yes.** Prime TechHub uses AES-256 encryption for all data in transit between your devices, our backend, and your mobile client. We never sell your telemetry data to third parties.")
 
+    # FIX 2: Only this box gets teal background — uses scoped class
     st.markdown("""
-    <div style='margin-top: 24px; text-align: center; padding: 16px;
-                background-color: #f8f9fa; border-radius: 12px;'>
-        <h4 style='margin: 0 0 6px 0;'>Still need help?</h4>
-        <p style='color: #666; font-size: 14px; margin: 0;'>
+    <div class="faq-contact-box">
+        <i class="bi bi-headset" style="font-size:22px;color:#1a8fa8;"></i>
+        <h4 style='margin:8px 0 4px 0; color:#203a43; font-size:16px;'>Still need help?</h4>
+        <p style='color:#555; font-size:13px; margin:0; line-height:1.7;'>
             Our support team is available 24/7.<br>
-            <strong style='color:#111;'>support@primetechhub.com</strong>
+            <strong style='color:#1a8fa8;'>support@primetechhub.com</strong>
         </p>
     </div>
     """, unsafe_allow_html=True)
-
 
 # ================================================================
 # PAGE: ABOUT US
@@ -1133,11 +1259,22 @@ def page_about():
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("#### 📊 Platform Highlights")
+    # FIX 3: Hard-coded black metric values — immune to global CSS overrides
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Products", "15+")
-    m2.metric("Categories", "7")
-    m3.metric("Uptime SLA", "99.9%")
-    m4.metric("Security", "AES-256")
+    for col, label, value in [
+        (m1, "Products",   "15+"),
+        (m2, "Categories", "9"),
+        (m3, "Uptime SLA", "99.9%"),
+        (m4, "Security",   "AES-256"),
+    ]:
+        col.markdown(f"""
+        <div style='padding:16px; text-align:center;'>
+            <div style='font-size:30px; font-weight:800; color:#111111;
+                        line-height:1; margin-bottom:4px;'>{value}</div>
+            <div style='font-size:12px; color:#888; font-weight:500;
+                        text-transform:uppercase; letter-spacing:1px;'>{label}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ================================================================
