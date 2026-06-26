@@ -20,11 +20,14 @@ from database import (
     verify_customer,
     get_products,
     get_customer_orders,
-    process_checkout
+    process_checkout,
+    update_customer_password
 )
 
 import sqlite3
 import pandas as pd
+import time
+import random
 from streamlit_option_menu import option_menu
 
 _CATEGORY_META = {
@@ -40,17 +43,12 @@ _CATEGORY_META = {
 
 # ================================================================
 # GLOBAL CSS — injected once at the top, never inside page blocks.
-# This prevents stacking / override conflicts.
 # ================================================================
 def inject_global_css():
     st.markdown("""
-    <!-- Bootstrap Icons CDN — enables monochromatic icon system site-wide -->
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        /* ============================================================
-           BRAND COLOR TOKENS
-        ============================================================ */
         :root {
             --teal-dark:    #0f2027;
             --teal-mid:     #203a43;
@@ -62,9 +60,6 @@ def inject_global_css():
             --border-light: #e8e8e8;
         }
 
-        /* ============================================================
-           LAYOUT CLEANUP
-        ============================================================ */
         footer, #MainMenu { visibility: hidden; }
         header[data-testid="stHeader"]  { background: transparent !important; }
         .block-container {
@@ -75,23 +70,14 @@ def inject_global_css():
         div[data-testid="InputInstructions"] { display: none !important; }
         hr { border-color: var(--border-light) !important; opacity: 1; }
         div[data-baseweb="select"] > div,
-        div[data-baseweb="select"] input { cursor: pointer !important;
-        }
+        div[data-baseweb="select"] input { cursor: pointer !important; }
 
-        /* ============================================================
-           SIDEBAR — elevated floating card aesthetic
-           (shadow gives the illusion of floating over content)
-        ============================================================ */
         section[data-testid="stSidebar"] {
             background-color: #ffffff !important;
             box-shadow: 4px 0 28px rgba(0, 0, 0, 0.09) !important;
             border-right: 1px solid #f2f2f2 !important;
         }
 
-        /* ============================================================
-           TEAL PRIMARY BUTTONS
-           (scoped to kind=primary only — doesn't affect danger/secondary)
-        ============================================================ */
         div[data-testid="stFormSubmitButton"] > button,
         div[data-testid="stButton"] > button[kind="primary"] {
             background: linear-gradient(135deg, var(--teal-mid), var(--teal-accent)) !important;
@@ -107,7 +93,6 @@ def inject_global_css():
             opacity: 0.88 !important;
             transform: translateY(-1px) !important;
         }
-        /* Secondary/plain buttons — keep minimal */
         div[data-testid="stButton"] > button:not([kind="primary"]) {
             border-radius: 8px !important;
             font-weight: 500 !important;
@@ -115,9 +100,6 @@ def inject_global_css():
             color: var(--text-muted) !important;
         }
 
-        /* ============================================================
-           CATEGORY CHIP PILLS
-        ============================================================ */
         [data-testid="stRadio"] [role="radio"] { display: none; }
         [data-testid="stRadio"] label {
             background-color: #f8f9fa;
@@ -137,9 +119,6 @@ def inject_global_css():
             font-weight: 600;
         }
 
-        /* ============================================================
-           PRODUCT CARD HOVER
-        ============================================================ */
         div[data-testid="stVerticalBlockBorderWrapper"] {
             transition: box-shadow 0.25s ease, transform 0.2s ease;
             border-radius: 14px !important;
@@ -149,17 +128,11 @@ def inject_global_css():
             transform: translateY(-3px) !important;
         }
 
-        /* ============================================================
-           METRIC VALUE — teal accent
-        ============================================================ */
         div[data-testid="stMetricValue"] {
-            color: var(--teal-accent) !important;
-            font-weight: 700 !important;
+            color: #111111 !important;
+            font-weight: 800 !important;
         }
-        
-        /* ============================================================
-           HORIZONTAL SHOWCASE SCROLL (Samsung-style)
-        ============================================================ */
+
         .showcase-scroll {
             display: flex;
             overflow-x: auto;
@@ -171,189 +144,141 @@ def inject_global_css():
             scrollbar-color: #c8d8dc transparent;
         }
         .showcase-scroll::-webkit-scrollbar { height: 4px; }
-        .showcase-scroll::-webkit-scrollbar-thumb {
-            background: #c8d8dc; border-radius: 10px;
-        }
+        .showcase-scroll::-webkit-scrollbar-thumb { background: #c8d8dc; border-radius: 10px; }
         .showcase-card {
-            min-width: 250px;
-            max-width: 250px;
-            background: #ffffff;
-            border: 1px solid var(--border-light);
-            border-radius: 16px;
-            padding: 0 0 18px 0;
-            scroll-snap-align: start;
+            min-width: 250px; max-width: 250px; background: #ffffff;
+            border: 1px solid var(--border-light); border-radius: 16px;
+            padding: 0 0 18px 0; scroll-snap-align: start;
             box-shadow: 0 2px 12px rgba(0,0,0,0.05);
-            transition: box-shadow 0.25s ease, transform 0.2s ease;
-            overflow: hidden;
+            transition: box-shadow 0.25s ease, transform 0.2s ease; overflow: hidden;
         }
-        .showcase-card:hover {
-            box-shadow: 0 8px 28px rgba(26,143,168,0.14);
-            transform: translateY(-4px);
-        }
-        .showcase-card-img {
-            height: 120px;
-            display: flex; align-items: center; justify-content: center;
-            margin-bottom: 14px;
-        }
+        .showcase-card:hover { box-shadow: 0 8px 28px rgba(26,143,168,0.14); transform: translateY(-4px); }
+        .showcase-card-img { height: 120px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
         .showcase-card-body { padding: 0 16px; }
-        .s-cat {
-            font-size: 10.5px;
-            color: var(--teal-accent);
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1.4px;
-            margin-bottom: 5px;
-        }
-        .s-name {
-            font-size: 16px; font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 6px; line-height: 1.3;
-        }
-        .s-desc {
-            font-size: 12.5px; color: var(--text-muted);
-            margin-bottom: 12px; line-height: 1.5;
-        }
+        .s-cat { font-size: 10.5px; color: var(--teal-accent); font-weight: 700; text-transform: uppercase; letter-spacing: 1.4px; margin-bottom: 5px; }
+        .s-name { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; line-height: 1.3; }
+        .s-desc { font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5; }
         .s-price { font-size: 17px; font-weight: 700; color: var(--teal-accent); }
 
-        /* ============================================================
-           CART BADGE (sidebar)
-        ============================================================ */
-        .cart-badge {
-            margin: 10px 12px 0 12px;
-            padding: 10px 14px;
-            background: linear-gradient(135deg, var(--teal-mid), var(--teal-accent));
-            border-radius: 10px;
-            display: flex; align-items: center; gap: 10px;
-        }
-        .cart-badge span { color: white; font-weight: 600; font-size: 13.5px; }
-
-        /* ============================================================
-           SAMSUNG ACCOUNT WATERMARK
-        ============================================================ */
         .samsung-watermark {
             position: fixed; bottom: 18px; right: 26px;
             color: #c5d8dc; font-size: 17px; font-weight: 700;
-            letter-spacing: 0.5px; z-index: 50; pointer-events: none;
-            user-select: none;
-        }
-        /* ── FIX 1: Primary button — use data-testid (more reliable than kind attr) ── */
-        button[data-testid="baseButton-primary"] {
-            background: linear-gradient(135deg, #203a43, #1a8fa8) !important;
-            border: none !important;
-            color: #ffffff !important;
-            font-weight: 600 !important;
-            border-radius: 8px !important;
-        }
-        button[data-testid="baseButton-primary"]:hover {
-            opacity: 0.88 !important;
-            transform: translateY(-1px) !important;
+            letter-spacing: 0.5px; z-index: 50; pointer-events: none; user-select: none;
         }
 
-        /* ══════════════════════════════════════════════════════
-           FIX 4: INPUT DOUBLE-BORDER — single clean border only
-           Root cause: CSS border on input + Streamlit wrapper
-           border + st.container(border=True) = 3 stacked borders
-        ═══════════════════════════════════════════════════════ */
-        div[data-testid="stTextInput"] input {
-            border: none !important;
-            border-radius: 6px !important;
-            box-shadow: none !important;
-            background: transparent !important;
-            padding: 6px 12px !important;
-            cursor: text !important;
-            pointer-events: all !important;
-            font-size: 14px !important;
+        button[data-testid="baseButton-primary"] {
+            background: linear-gradient(135deg, #203a43, #1a8fa8) !important;
+            border: none !important; color: #ffffff !important;
+            font-weight: 600 !important; border-radius: 8px !important;
         }
-        /* Single border lives here — on the wrapper only */
+        button[data-testid="baseButton-primary"]:hover { opacity: 0.88 !important; transform: translateY(-1px) !important; }
+
+        div[data-testid="stTextInput"] input {
+            border: none !important; border-radius: 6px !important;
+            box-shadow: none !important; background: transparent !important;
+            padding: 6px 12px !important; cursor: text !important;
+            pointer-events: all !important; font-size: 14px !important;
+        }
         div[data-testid="stTextInput"] > div[data-baseweb="input"] {
-            border: 1.5px solid #e0e0e0 !important;
-            border-radius: 8px !important;
+            border: 1.5px solid #e0e0e0 !important; border-radius: 8px !important;
             background: #ffffff !important;
             transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
             pointer-events: all !important;
         }
         div[data-testid="stTextInput"] > div[data-baseweb="input"]:focus-within {
-            border-color: #1a8fa8 !important;
-            box-shadow: 0 0 0 3px rgba(26,143,168,0.10) !important;
+            border-color: #1a8fa8 !important; box-shadow: 0 0 0 3px rgba(26,143,168,0.10) !important;
         }
-        div[data-testid="stTextInput"] > div[data-baseweb="input"]:hover {
-            border-color: #1a8fa8 !important;
-        }
+        div[data-testid="stTextInput"] > div[data-baseweb="input"]:hover { border-color: #1a8fa8 !important; }
 
-        /* ══════════════════════════════════════════════════════
-           FIX 3: ABOUT US METRICS — revert to black
-           Remove the global teal override; scope teal only to
-           sidebar cart badge where it was intentional
-        ═══════════════════════════════════════════════════════ */
-        div[data-testid="stMetricValue"] {
-            color: #111111 !important;
-            font-weight: 800 !important;
-        }
-
-        /* ══════════════════════════════════════════════════════
-           FIX 6: SEARCH CURSOR — full surface interactive
-        ═══════════════════════════════════════════════════════ */
         div[data-testid="stTextInput"],
         div[data-testid="stTextInput"] > div,
         div[data-testid="stTextInput"] > div > div,
         div[data-testid="stTextInput"] > div[data-baseweb="input"] {
-            cursor: text !important;
-            pointer-events: all !important;
-            position: relative !important;
-            z-index: 5 !important;
+            cursor: text !important; pointer-events: all !important;
+            position: relative !important; z-index: 5 !important;
         }
 
-        /* ══════════════════════════════════════════════════════
-           FIX 7: CART BUTTON — teal primary (reliable selector)
-        ═══════════════════════════════════════════════════════ */
         button[data-testid="baseButton-primary"],
         button[kind="primary"],
         .stButton button[data-testid^="baseButton"] {
             background: linear-gradient(135deg, #203a43, #1a8fa8) !important;
-            border: none !important;
-            color: #ffffff !important;
-            font-weight: 600 !important;
-            border-radius: 8px !important;
+            border: none !important; color: #ffffff !important;
+            font-weight: 600 !important; border-radius: 8px !important;
             transition: opacity 0.2s ease !important;
-        }
-        button[data-testid="baseButton-primary"]:hover {
-            opacity: 0.88 !important;
         }
         div[data-testid="stFormSubmitButton"] > button {
             background: linear-gradient(135deg, #203a43, #1a8fa8) !important;
-            border: none !important;
-            color: #ffffff !important;
-            font-weight: 600 !important;
-            border-radius: 8px !important;
-            width: 100% !important;
+            border: none !important; color: #ffffff !important;
+            font-weight: 600 !important; border-radius: 8px !important; width: 100% !important;
         }
 
-        /* ══════════════════════════════════════════════════════
-           FIX 2: FAQ last box — light teal only
-        ═══════════════════════════════════════════════════════ */
         .faq-contact-box {
-            margin-top: 24px;
-            text-align: center;
-            padding: 20px;
-            background: #e8f5f8 !important;
-            border-radius: 12px;
-            border: 1px solid #c0dde4;
+            margin-top: 24px; text-align: center; padding: 20px;
+            background: #e8f5f8 !important; border-radius: 12px; border: 1px solid #c0dde4;
         }
+
+        div[data-testid="stForm"] div[data-baseweb="input"] {
+            background-color: #f1f5f9 !important; border: 1.5px solid #e2e8f0 !important;
+            border-radius: 8px !important; box-shadow: none !important;
+        }
+        div[data-testid="stForm"] div[data-baseweb="input"] input {
+            background-color: transparent !important; border: none !important;
+            box-shadow: none !important; padding: 8px 14px !important;
+        }
+        div[data-testid="stForm"] div[data-baseweb="input"] div {
+            background-color: transparent !important; border: none !important;
+        }
+        div[data-testid="stForm"] div[data-baseweb="input"]:focus-within {
+            background-color: #ffffff !important;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.18) !important;
+        }
+
+        /* ── Cart button: full surface, no z-index bleed from selectbox ── */
+        div[data-testid="stColumns"] div[data-testid="stButton"] {
+            position: relative !important; z-index: 30 !important;
+        }
+        div[data-testid="stColumns"] div[data-testid="stButton"] button {
+            pointer-events: all !important; cursor: pointer !important;
+            width: 100% !important; position: relative !important; z-index: 30 !important;
+        }
+        div[data-baseweb="select"] { position: relative !important; z-index: 15 !important; }
+        div[data-baseweb="popover"] { z-index: 16 !important; }
+
+        /* ── Cart receipt styling ── */
+        .receipt-row {
+            display: flex; justify-content: space-between;
+            padding: 6px 0; font-size: 13.5px; border-bottom: 1px solid #f5f5f5;
+        }
+        .receipt-row .r-label { color: #666; }
+        .receipt-row .r-value { font-weight: 600; color: #111; }
+        .receipt-total {
+            display: flex; justify-content: space-between;
+            padding: 10px 0 4px 0; font-size: 17px; font-weight: 800;
+        }
+        .receipt-total .r-label { color: #111; }
+        .receipt-total .r-value { color: #1a8fa8; }
+
+        /* Vertical gap fix: input in sidebar form */
+        div[data-testid="stForm"] div[data-testid="stTextInput"] { margin-bottom: -10px !important; }
+        div[data-testid="stForm"] div[data-testid="stTextInput"]:last-of-type { margin-bottom: 0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
 
 # ================================================================
-# SESSION STATE INITIALIZER — run once, never inside page blocks
+# SESSION STATE — cart is a dict: {str(product_id): {qty, name, price, category}}
+# page_override allows cart button to route without sidebar nav
 # ================================================================
 def init_session_state():
     defaults = {
-        "cart": [],
-        "customer_logged_in": False,
-        "admin_logged_in": False,
-        "current_customer": None,
-        "account_mode": "login",
-        "show_login_message": False,
+        "cart":                {},      # DICT — key=str(id), value={qty,name,price,category}
+        "customer_logged_in":  False,
+        "admin_logged_in":     False,
+        "current_customer":    None,
+        "account_mode":        "login",
+        "show_login_message":  False,
+        "page_override":       None,    # set by cart header button
+        "_last_sidebar_page":  "Home",  # detect sidebar nav changes
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -373,18 +298,15 @@ def render_sidebar():
         menu_icons.append("terminal-fill")
 
     with st.sidebar:
-        # Brand block — no version string here
         st.markdown("""
         <div style='padding: 18px 16px 10px 16px;'>
-            <span style='font-weight:800; font-size:19px;
-                         letter-spacing:-0.5px; color:#111;'>
+            <span style='font-weight:800; font-size:19px; letter-spacing:-0.5px; color:#111;'>
                 Main Menu
             </span><br>
         </div>
         <hr style='margin: 0 0 6px 0; border-color:#f0f0f0;'>
         """, unsafe_allow_html=True)
 
-        # "Main Menu" label — single instance, non-clickable
         st.markdown("""
         <div style='padding: 4px 16px 8px 16px;'>
             <span style='font-size: 10px; font-weight: 700; color: #bbb;
@@ -400,47 +322,38 @@ def render_sidebar():
             icons=menu_icons,
             default_index=0,
             styles={
-                "container":         {"padding": "0!important",
-                                      "background-color": "transparent"},
+                "container":         {"padding": "0!important", "background-color": "transparent"},
                 "icon":              {"font-size": "15px", "color": "#203a43"},
                 "nav-link": {
-                    "font-size":     "14px",
-                    "text-align":    "left",
-                    "margin":        "2px 0",
-                    "color":         "#333",
-                    "font-weight":   "500",
-                    "--hover-color": "#f0f5f6",
-                    "border-radius": "8px",
-                    "padding":       "9px 14px",
+                    "font-size":     "14px", "text-align": "left",
+                    "margin":        "2px 0", "color": "#333", "font-weight": "500",
+                    "--hover-color": "#f0f5f6", "border-radius": "8px", "padding": "9px 14px",
                 },
-                "nav-link-selected": {
-                    "background-color": "#e8f5f8",
-                    "color":            "#1a8fa8",
-                    "font-weight":      "700",
-                },
+                "nav-link-selected": {"background-color": "#e8f5f8", "color": "#1a8fa8", "font-weight": "700"},
             }
         )
 
-        # Cart badge — only when cart has items
-        cart_count = len(st.session_state.get("cart", []))
-        if cart_count > 0:
+        # Cart badge — total quantity across all items
+        cart      = st.session_state.get("cart", {})
+        cart_qty  = sum(v["qty"] for v in cart.values()) if cart else 0
+        if cart_qty > 0:
             st.markdown(f"""
             <div style='margin: 8px 12px 0 12px; padding: 9px 14px;
                         background: linear-gradient(135deg, #203a43, #1a8fa8);
-                        border-radius: 10px; display:flex;
-                        align-items:center; gap:10px;'>
-                <i class="bi bi-cart3"
-                   style="color:white; font-size:16px;"></i>
+                        border-radius: 10px; display:flex; align-items:center; gap:10px;'>
+                <i class="bi bi-cart3" style="color:white; font-size:16px;"></i>
                 <span style="color:white; font-weight:600; font-size:13px;">
-                    {cart_count} item{'s' if cart_count != 1 else ''} in cart
+                    {cart_qty} item{'s' if cart_qty != 1 else ''} in cart
                 </span>
             </div>
             """, unsafe_allow_html=True)
 
-        # NO version string anywhere in sidebar — completely removed
-
     return page
 
+
+# ================================================================
+# SHOWCASE HTML
+# ================================================================
 def _build_showcase_html(products_df):
     featured = products_df.drop_duplicates(subset=["category"]).head(8)
     cards = ""
@@ -464,7 +377,6 @@ def _build_showcase_html(products_df):
             </div>
         </div>"""
 
-    # NO swipe text — clean interface
     return f"""
     <div style="margin:0 0 8px 0;">
         <span style="font-size:10.5px;font-weight:700;color:#1a8fa8;
@@ -474,13 +386,12 @@ def _build_showcase_html(products_df):
     </div>
     <div class="showcase-scroll" style="padding-bottom:8px;">{cards}</div>"""
 
+
 # ================================================================
-# PAGE: HOME (Storefront)
-# Purpose: Hero banner, category chips, 3-column product grid
+# PAGE: HOME
 # ================================================================
 def page_home():
-    # ── Header ──────────────────────────────────────────────────────
-    h1, h2, h3 = st.columns([1, 2.2, 0.55])
+    h1, h2, h3 = st.columns([1, 1.8, 0.9])
 
     with h1:
         st.markdown("""
@@ -491,106 +402,60 @@ def page_home():
         </div>""", unsafe_allow_html=True)
 
     with h2:
-        # CSS scoped to this column only — fixes ghost label hit-testing
         st.markdown("""
         <style>
-            /* Remove invisible label ghost that eats pointer events */
             div[data-testid="stTextInput"] label {
-                height: 0 !important;
-                overflow: hidden !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                pointer-events: none !important;
+                height: 0 !important; overflow: hidden !important;
+                margin: 0 !important; padding: 0 !important; pointer-events: none !important;
             }
-            /* Full surface clickable — override any stacking suppression */
             div[data-testid="stTextInput"],
             div[data-testid="stTextInput"] > div,
             div[data-testid="stTextInput"] > div[data-baseweb="input"],
             div[data-testid="stTextInput"] input {
-                pointer-events: all !important;
-                cursor: text !important;
-                position: relative !important;
-                z-index: 20 !important;
+                pointer-events: all !important; cursor: text !important;
+                position: relative !important; z-index: 20 !important;
             }
-            /* Single clean border — no double border */
             div[data-testid="stTextInput"] > div[data-baseweb="input"] {
-                border: 1.5px solid #e0e0e0 !important;
-                border-radius: 25px !important;
-                background: #f8f9fa !important;
-                box-shadow: none !important;
+                border: 1.5px solid #e0e0e0 !important; border-radius: 25px !important;
+                background: #f8f9fa !important; box-shadow: none !important;
                 transition: border-color 0.2s, box-shadow 0.2s !important;
             }
             div[data-testid="stTextInput"] > div[data-baseweb="input"]:focus-within,
             div[data-testid="stTextInput"] > div[data-baseweb="input"]:hover {
-                border-color: #1a8fa8 !important;
-                background: #ffffff !important;
+                border-color: #1a8fa8 !important; background: #ffffff !important;
                 box-shadow: 0 0 0 3px rgba(26,143,168,0.10) !important;
             }
             div[data-testid="stTextInput"] input {
-                border: none !important;
-                background: transparent !important;
-                box-shadow: none !important;
-                font-size: 14px !important;
-                padding: 8px 16px !important;
+                border: none !important; background: transparent !important;
+                box-shadow: none !important; font-size: 14px !important; padding: 8px 16px !important;
             }
         </style>
         """, unsafe_allow_html=True)
 
-        search_query = st.text_input(
-            "Search products",
+        products_df_for_search = get_products()
+        all_names = products_df_for_search["name"].tolist() if not products_df_for_search.empty else []
+
+        selected_product_name = st.selectbox(
+            "Search products", options=all_names, index=None,
             placeholder="  Search smart devices 🔍…",
-            label_visibility="collapsed",
-            key="home_search"
+            label_visibility="collapsed", key="home_search"
         )
 
-        # ── Live suggestion dropdown ──────────────────────────
-        if search_query.strip():
-            all_products = get_products()
-            q = search_query.strip().lower()
-
-            # Match against name AND category
-            mask = (
-                all_products["name"].str.lower().str.contains(q, na=False) |
-                all_products["category"].str.lower().str.contains(q, na=False)
-            )
-            matches = all_products[mask & (all_products["stock"] > 0)]
-
-            if matches.empty:
-                st.markdown("""
-                <div style='background:#fff8f0; border:1px solid #ffe0b2;
-                            border-radius:8px; padding:10px 14px;
-                            font-size:13px; color:#888; margin-top:4px;'>
-                    <i class="bi bi-search"></i>
-                    &nbsp; No matching smart home products found.
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                # Suggestion pills — clicking loads product detail
-                for _, m in matches.head(5).iterrows():
-                    if st.button(
-                        f"  {m['name']}  ·  PKR {m['price']:,.0f}",
-                        key=f"suggest_{m['id']}",
-                        use_container_width=True
-                    ):
-                        st.session_state["selected_product"] = m.to_dict()
-                        st.session_state["page_override"] = None
-                        st.rerun()
-
     with h3:
-        cart_count = len(st.session_state.get("cart", []))
-        # FIX 7: Removed "items" label text. Button click routes to Cart.
-        if st.button(f"🛒  {cart_count}", type="primary", key="hdr_cart_btn"):
+        # Cart total quantity
+        cart     = st.session_state.get("cart", {})
+        cart_qty = sum(v["qty"] for v in cart.values()) if cart else 0
+        if st.button(f"🛒  {cart_qty}", type="primary", key="hdr_cart_btn"):
             st.session_state["page_override"] = "Cart"
             st.rerun()
 
     st.markdown("<hr style='margin:0.4rem 0 0.7rem 0;'>", unsafe_allow_html=True)
 
-    # ── Hero Banner (reduced padding — compact) ──────────────────
+    # Hero Banner
     st.markdown("""
     <div style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
                 padding:22px 28px 20px 28px; border-radius:14px; text-align:center;
-                color:white; margin-bottom:18px;
-                box-shadow:0 6px 24px rgba(15,32,39,0.18);">
+                color:white; margin-bottom:18px; box-shadow:0 6px 24px rgba(15,32,39,0.18);">
         <div style="font-size:9.5px;font-weight:700;letter-spacing:2.5px;
                     color:#7ecdd8;text-transform:uppercase;margin-bottom:8px;">
             <i class="bi bi-shield-check"></i>&nbsp; Trusted Smart Home Platform
@@ -603,27 +468,20 @@ def page_home():
             Upgrade every corner of your home with Prime TechHub's curated smart device ecosystem.
         </p>
         <div style="margin-top:14px;display:flex;justify-content:center;gap:20px;flex-wrap:wrap;">
-            <span style="font-size:11.5px;color:#7ecdd8;">
-                <i class="bi bi-wifi"></i>&nbsp;Wi-Fi Ready</span>
-            <span style="font-size:11.5px;color:#7ecdd8;">
-                <i class="bi bi-shield-lock"></i>&nbsp;AES-256 Secure</span>
-            <span style="font-size:11.5px;color:#7ecdd8;">
-                <i class="bi bi-box-seam"></i>&nbsp;Same-Day Dispatch</span>
-            <span style="font-size:11.5px;color:#7ecdd8;">
-                <i class="bi bi-arrow-return-left"></i>&nbsp;30-Day Returns</span>
+            <span style="font-size:11.5px;color:#7ecdd8;"><i class="bi bi-wifi"></i>&nbsp;Wi-Fi Ready</span>
+            <span style="font-size:11.5px;color:#7ecdd8;"><i class="bi bi-shield-lock"></i>&nbsp;AES-256 Secure</span>
+            <span style="font-size:11.5px;color:#7ecdd8;"><i class="bi bi-box-seam"></i>&nbsp;Same-Day Dispatch</span>
+            <span style="font-size:11.5px;color:#7ecdd8;"><i class="bi bi-arrow-return-left"></i>&nbsp;30-Day Returns</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Everything below this line stays exactly as-is in your current code ──
     products_df = get_products()
 
     if not products_df.empty:
         st.markdown(_build_showcase_html(products_df), unsafe_allow_html=True)
-        # FIX 5: Vertical breathing room between showcase and grid
         st.markdown("<div style='margin-bottom:22px;'></div>", unsafe_allow_html=True)
 
-    # ── Divider + Section title ──────────────────────────────────
     st.markdown("""
     <div style="display:flex; align-items:center; margin:8px 0 14px 0; gap:12px;">
         <span style="font-size:11px; font-weight:700; color:#1a8fa8;
@@ -634,19 +492,10 @@ def page_home():
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Category Filter Chips ────────────────────────────────────
-    # To add a new category: just append it to this list.
-    CATEGORIES = [
-        "All", "Camera", "Lighting", "Smart Plug",
-        "Hub/Controller", "Sensors", "Networking", "Audio"
-    ]
-    category_filter = st.radio(
-        "Category", CATEGORIES,
-        horizontal=True, label_visibility="collapsed"
-    )
+    CATEGORIES = ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"]
+    category_filter = st.radio("Category", CATEGORIES, horizontal=True, label_visibility="collapsed")
     st.write("")
 
-    # ── Fetch + Filter ───────────────────────────────────────────
     if products_df.empty:
         st.warning("Inventory is empty. Add products via the Admin tab.")
         return
@@ -655,12 +504,12 @@ def page_home():
     if category_filter != "All":
         filtered_df = filtered_df[filtered_df["category"] == category_filter]
 
-    safe_search = st.session_state.get("home_search", "")
-    clean_query = safe_search.strip().lower().replace("-","").replace(" ","")
+    safe_search = st.session_state.get("home_search") or ""
+    clean_query = safe_search.strip().lower().replace("-", "").replace(" ", "")
     if clean_query:
         filtered_df["_cn"] = (filtered_df["name"].str.lower()
-                              .str.replace("-","",regex=False)
-                              .str.replace(" ","",regex=False))
+                              .str.replace("-", "", regex=False)
+                              .str.replace(" ", "", regex=False))
         filtered_df = filtered_df[filtered_df["_cn"].str.contains(clean_query, na=False)]
 
     filtered_df = filtered_df[filtered_df["stock"] > 0]
@@ -671,92 +520,64 @@ def page_home():
 
     st.caption(f"Showing **{len(filtered_df)}** device{'s' if len(filtered_df) != 1 else ''}")
 
-    # ── 3-Column Product Grid ────────────────────────────────────
-    # To change columns: update NUM_COLUMNS only.
     NUM_COLUMNS = 3
     cols = st.columns(NUM_COLUMNS)
-
-    # Icon map for categories — extend this dict to add more categories
     CAT_ICONS = {
-        "Camera":         "bi-camera-video-fill",
-        "Lighting":       "bi-lightbulb-fill",
-        "Smart Plug":     "bi-plug-fill",
-        "Hub/Controller": "bi-cpu-fill",
-        "Sensors":        "bi-activity",
-        "Networking":     "bi-wifi",
-        "Audio":          "bi-speaker-fill",
+        "Camera": "bi-camera-video-fill", "Lighting": "bi-lightbulb-fill",
+        "Smart Plug": "bi-plug-fill", "Hub/Controller": "bi-cpu-fill",
+        "Sensors": "bi-activity", "Networking": "bi-wifi", "Audio": "bi-speaker-fill",
     }
 
     for i, (_, row) in enumerate(filtered_df.iterrows()):
-        col = cols[i % NUM_COLUMNS]
-        cat_icon = CAT_ICONS.get(row["category"], "bi-box-fill")
+        col       = cols[i % NUM_COLUMNS]
+        cat_icon  = CAT_ICONS.get(row["category"], "bi-box-fill")
+        pid       = str(row["id"])
 
         with col:
             with st.container(border=True):
-                # Category icon + label
                 st.markdown(f"""
                 <div style="font-size:11px; font-weight:700; color:#1a8fa8;
                             text-transform:uppercase; letter-spacing:1.2px; margin-bottom:6px;">
                     <i class="bi {cat_icon}"></i>&nbsp; {row['category']}
                 </div>""", unsafe_allow_html=True)
 
-                # Product name
                 st.markdown(f"""
                 <div style="font-size:17px; font-weight:600; color:#111;
-                            margin-bottom:5px; line-height:1.3;">
-                    {row['name']}
-                </div>""", unsafe_allow_html=True)
+                            margin-bottom:5px; line-height:1.3;">{row['name']}</div>
+                """, unsafe_allow_html=True)
 
-                # Description
                 if row.get("description"):
                     st.caption(row["description"])
 
-                # Price
                 st.markdown(f"""
-                <div style="font-size:18px; font-weight:800; color:#1a8fa8;
-                            margin:10px 0 8px 0;">
+                <div style="font-size:18px; font-weight:800; color:#1a8fa8; margin:10px 0 8px 0;">
                     PKR {row['price']:,.0f}
                 </div>""", unsafe_allow_html=True)
 
-                # Stock indicator
                 if row["stock"] <= 5:
-                    st.markdown(f"""
-                    <div style="font-size:12px; color:#c0392b; font-weight:600;
-                                margin-bottom:8px;">
-                        <i class="bi bi-exclamation-triangle-fill"></i>
-                        &nbsp;Only {row['stock']} left
-                    </div>""", unsafe_allow_html=True)
+                    st.markdown(f'<div style="font-size:12px;color:#c0392b;font-weight:600;margin-bottom:8px;"><i class="bi bi-exclamation-triangle-fill"></i>&nbsp;Only {row["stock"]} left</div>', unsafe_allow_html=True)
                 elif row["stock"] <= 20:
-                    st.markdown(f"""
-                    <div style="font-size:12px; color:#e67e22; font-weight:600;
-                                margin-bottom:8px;">
-                        <i class="bi bi-dash-circle-fill"></i>
-                        &nbsp;Low Stock — {row['stock']} remaining
-                    </div>""", unsafe_allow_html=True)
+                    st.markdown(f'<div style="font-size:12px;color:#e67e22;font-weight:600;margin-bottom:8px;"><i class="bi bi-dash-circle-fill"></i>&nbsp;Low Stock — {row["stock"]} remaining</div>', unsafe_allow_html=True)
                 else:
-                    st.markdown(f"""
-                    <div style="font-size:12px; color:#27ae60; font-weight:600;
-                                margin-bottom:8px;">
-                        <i class="bi bi-check-circle-fill"></i>
-                        &nbsp;In Stock ({row['stock']} units)
-                    </div>""", unsafe_allow_html=True)
+                    st.markdown(f'<div style="font-size:12px;color:#27ae60;font-weight:600;margin-bottom:8px;"><i class="bi bi-check-circle-fill"></i>&nbsp;In Stock ({row["stock"]} units)</div>', unsafe_allow_html=True)
 
-                # Add to Cart button
-                if st.button(
-                    "Add to Cart", type="primary",
-                    key=f"add_{row['id']}", use_container_width=True
-                ):
-                    st.session_state["cart"].append({
-                        "id": row["id"],
-                        "name": row["name"],
-                        "price": row["price"]
-                    })
+                # ── Add to Cart → stores full product info in dict ──
+                if st.button("Add to Cart", type="primary", key=f"add_{row['id']}", use_container_width=True):
+                    cart = st.session_state["cart"]
+                    if pid in cart:
+                        cart[pid]["qty"] += 1
+                    else:
+                        cart[pid] = {
+                            "qty":      1,
+                            "name":     row["name"],
+                            "price":    float(row["price"]),
+                            "category": row.get("category", ""),
+                        }
                     st.toast(f"✅ {row['name']} added to cart!")
 
 
 # ================================================================
 # PAGE: FILTERS
-# Purpose: Same grid but with full sidebar filter controls
 # ================================================================
 def page_filters():
     st.markdown("## 🔍 Browse & Filter Devices")
@@ -772,12 +593,10 @@ def page_filters():
     with col_filter:
         st.markdown("#### Filters")
         selected_cats = st.multiselect(
-            "Category",
-            options=sorted(products_df["category"].unique().tolist()),
-            default=[]
+            "Category", options=sorted(products_df["category"].unique().tolist()), default=[]
         )
-        min_price = int(products_df["price"].min())
-        max_price = int(products_df["price"].max())
+        min_price  = int(products_df["price"].min())
+        max_price  = int(products_df["price"].max())
         price_range = st.slider("Price Range (PKR)", min_price, max_price, (min_price, max_price), step=500)
         in_stock_only = st.checkbox("In-Stock Only", value=True)
 
@@ -794,108 +613,281 @@ def page_filters():
         else:
             st.caption(f"Showing **{len(filtered)}** product(s)")
             NUM_COLUMNS = 3
-            cols = st.columns(NUM_COLUMNS)
+            cols        = st.columns(NUM_COLUMNS)
             for i, (_, row) in enumerate(filtered.iterrows()):
-                col = cols[i % NUM_COLUMNS]
-                with col:
+                pid = str(row["id"])
+                with cols[i % NUM_COLUMNS]:
                     with st.container(border=True):
-                        st.markdown(f"<div style='font-size: 18px; font-weight: 500;'>{row['name']}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:18px;font-weight:500;'>{row['name']}</div>", unsafe_allow_html=True)
                         st.caption(f"📂 {row['category']}")
-                        st.markdown(f"<div style='font-size: 17px; font-weight: 700; margin: 8px 0;'>PKR {row['price']:,.0f}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:17px;font-weight:700;margin:8px 0;'>PKR {row['price']:,.0f}</div>", unsafe_allow_html=True)
                         if st.button("Add to Cart", key=f"filter_add_{row['id']}", use_container_width=True):
-                            st.session_state["cart"].append({"id": row["id"], "name": row["name"], "price": row["price"]})
+                            cart = st.session_state["cart"]
+                            if pid in cart:
+                                cart[pid]["qty"] += 1
+                            else:
+                                cart[pid] = {"qty": 1, "name": row["name"],
+                                             "price": float(row["price"]), "category": row.get("category", "")}
                             st.toast(f"✅ Added {row['name']} to cart!")
 
 
 # ================================================================
-# PAGE: CART / CHECKOUT
-# Purpose: Displays cart items, shipping form, processes payment
+# PAGE: CART & CHECKOUT
+# - Cart viewable by all (no login wall at top)
+# - Login required only at checkout step
+# - Cart stored as dict: {str(id): {qty, name, price, category}}
+# - Receipt shows Subtotal + GST (17%) + Platform Fee + Total
 # ================================================================
 def page_cart():
-    st.markdown("### 🛒 Secure Checkout")
 
-    # --- Guard: must be logged in as customer ---
-    if not st.session_state.get("customer_logged_in") or not st.session_state.get("current_customer"):
-        st.warning("🔒 Please sign in to your Prime TechHub account to view your cart.")
-        st.info("Go to the **Account** tab in the sidebar to log in or register.")
-        return
-
-    # --- Post-checkout receipt display ---
+    # ── CASE A: Show receipt after successful checkout ────────────
     if "receipt" in st.session_state:
         r = st.session_state["receipt"]
-        st.success("✅ Payment Successful! Your order has been confirmed.")
+        st.markdown("""
+        <div style='background:linear-gradient(135deg,#0f2027,#203a43);
+                    padding:22px 28px; border-radius:14px; color:white; margin-bottom:22px;'>
+            <div style='font-size:10px;font-weight:700;color:#7ecdd8;
+                        text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;'>
+                <i class="bi bi-check-circle-fill"></i>&nbsp; Order Confirmed
+            </div>
+            <h3 style='margin:0;font-size:22px;font-weight:800;'>Payment Successful 🎉</h3>
+            <p style='margin:6px 0 0 0;font-size:13px;color:#b8d4da;'>
+                Thank you for shopping with Prime TechHub.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
         with st.container(border=True):
-            st.markdown(f"### Digital Receipt: `{r['order_id']}`")
-            col1, col2 = st.columns(2)
-            col1.write(f"**Customer:** {r['name']}")
-            col1.write(f"**Shipped To:** {r['address']}")
-            col2.write(f"**Payment:** {r['method']}")
-            col2.write(f"**Items:** {r['items']}")
-            st.metric("Total Paid", f"PKR {r['total']:,.2f}")
-        if st.button("Continue Shopping", use_container_width=True):
+            st.markdown(f"### Digital Receipt — `{r['order_id']}`")
+            c1, c2 = st.columns(2)
+            c1.markdown(f"**Customer:** {r['name']}")
+            c1.markdown(f"**Address:** {r['address']}")
+            c2.markdown(f"**Payment:** {r['method']}")
+            c2.markdown(f"**Items ordered:** {r['items_count']}")
+            st.divider()
+            rc1, rc2, rc3 = st.columns(3)
+            rc1.metric("Subtotal",     f"PKR {r['subtotal']:,.0f}")
+            rc2.metric("GST (17%)",    f"PKR {r['tax']:,.0f}")
+            rc3.metric("Total Paid",   f"PKR {r['total']:,.0f}")
+
+        st.write("")
+        if st.button("✅ Continue Shopping", type="primary", use_container_width=True):
             del st.session_state["receipt"]
+            st.session_state["page_override"] = "Home"
             st.rerun()
         return
 
-    # --- Empty cart ---
-    if not st.session_state.get("cart"):
-        st.info("Your cart is empty. Head to the Home tab to browse our smart devices.")
+    # ── Page header ───────────────────────────────────────────────
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#0f2027,#203a43);
+                padding:20px 26px; border-radius:14px; color:white; margin-bottom:20px;'>
+        <div style='font-size:10px;font-weight:700;color:#7ecdd8;
+                    text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;'>
+            <i class="bi bi-cart3-fill"></i>&nbsp; Shopping Cart
+        </div>
+        <h3 style='margin:0;font-size:20px;font-weight:800;'>Review Your Order</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
+    cart = st.session_state.get("cart", {})
+
+    # ── CASE B: Empty cart ────────────────────────────────────────
+    if not cart:
+        st.markdown("""
+        <div style='text-align:center;padding:50px 20px;'>
+            <i class="bi bi-cart-x" style="font-size:52px;color:#ccc;"></i>
+            <h4 style='color:#999;margin:16px 0 6px 0;'>Your cart is empty</h4>
+            <p style='color:#bbb;font-size:13px;'>
+                Browse the Home page to add smart devices.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Browse Devices", type="primary", use_container_width=False):
+            st.session_state["page_override"] = "Home"
+            st.rerun()
         return
 
-    # --- Cart Items + Checkout Form ---
-    cart = st.session_state["cart"]
-    total = sum(item["price"] for item in cart)
+    # ── Two-column layout: items | receipt+checkout ───────────────
+    col_items, col_receipt = st.columns([1.4, 1])
 
-    col_summary, col_form = st.columns([1, 1])
+    subtotal       = 0.0
+    pids_to_remove = []
 
-    with col_summary:
-        st.markdown("#### Order Summary")
-        for item in cart:
+    # ── LEFT: Cart Items ──────────────────────────────────────────
+    with col_items:
+        st.markdown("#### Cart Items")
+
+        for pid, info in list(cart.items()):
+            qty        = info["qty"]
+            price      = info["price"]
+            line_total = price * qty
+            subtotal  += line_total
+
             with st.container(border=True):
-                c1, c2 = st.columns([3, 1])
-                c1.write(f"**{item['name']}**")
-                c2.write(f"PKR {item['price']:,.0f}")
-        st.markdown("---")
-        st.metric("Total Amount Due", f"PKR {total:,.2f}")
-        if st.button("🗑️ Clear Cart", use_container_width=True):
-            st.session_state["cart"] = []
+                top_col, price_col = st.columns([2.5, 1])
+
+                with top_col:
+                    st.markdown(f"""
+                    <div style='font-size:15px;font-weight:600;color:#111;margin-bottom:2px;'>
+                        {info['name']}
+                    </div>
+                    <div style='font-size:11px;color:#1a8fa8;font-weight:600;
+                                text-transform:uppercase;letter-spacing:1px;'>
+                        {info.get('category','')}
+                    </div>""", unsafe_allow_html=True)
+
+                with price_col:
+                    st.markdown(f"""
+                    <div style='text-align:right;font-size:15px;font-weight:700;
+                                color:#1a8fa8;padding-top:4px;'>
+                        PKR {line_total:,.0f}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                # Quantity controls + Remove
+                btn_minus, qty_display, btn_plus, btn_remove = st.columns([0.6, 0.8, 0.6, 1])
+
+                with btn_minus:
+                    if st.button("−", key=f"minus_{pid}", use_container_width=True):
+                        if cart[pid]["qty"] > 1:
+                            cart[pid]["qty"] -= 1
+                        else:
+                            pids_to_remove.append(pid)
+                        st.rerun()
+
+                with qty_display:
+                    st.markdown(f"""
+                    <div style='text-align:center;font-size:15px;font-weight:700;
+                                padding-top:6px;color:#111;'>{qty}</div>
+                    """, unsafe_allow_html=True)
+
+                with btn_plus:
+                    if st.button("+", key=f"plus_{pid}", use_container_width=True):
+                        cart[pid]["qty"] += 1
+                        st.rerun()
+
+                with btn_remove:
+                    if st.button("Remove", key=f"rm_{pid}", use_container_width=True):
+                        pids_to_remove.append(pid)
+                        st.rerun()
+
+        # Apply removals
+        for pid in pids_to_remove:
+            st.session_state["cart"].pop(pid, None)
+
+        st.divider()
+        if st.button("🗑️ Clear Entire Cart", use_container_width=True):
+            st.session_state["cart"] = {}
             st.rerun()
 
-    with col_form:
-        st.markdown("#### Delivery & Payment")
-        with st.form("checkout_form", clear_on_submit=False):
-            st.write("**1. Delivery Address**")
-            c_name    = st.text_input("Full Name", value=st.session_state["current_customer"]["name"])
-            c_phone   = st.text_input("Phone Number", placeholder="+92 XXX XXXXXXX")
-            c_address = st.text_area("Complete Address (House, Street, City)")
+    # ── RIGHT: Receipt breakdown + Checkout ──────────────────────
+    with col_receipt:
+        st.markdown("#### Order Receipt")
 
-            st.write("**2. Payment Gateway (Sandbox)**")
-            pay_method = st.radio("Method", ["Cash on Delivery (COD)", "Credit/Debit Card"])
-            st.caption("For testing: use card `4242 4242 4242 4242`")
-            c_card = st.text_input("Card Number", placeholder="16-digit card number")
+        TAX_RATE     = 0.17   # Pakistan GST
+        PLATFORM_FEE = 99.0   # Flat platform fee
+        tax          = subtotal * TAX_RATE
+        total        = subtotal + tax + PLATFORM_FEE
+
+        with st.container(border=True):
+            # Line items
+            for pid, info in cart.items():
+                rc, rp = st.columns([2, 1])
+                rc.caption(f"{info['name']} ×{info['qty']}")
+                rp.caption(f"PKR {info['price'] * info['qty']:,.0f}")
+
+            st.divider()
+
+            st.markdown(f"""
+            <div class="receipt-row">
+                <span class="r-label">Subtotal</span>
+                <span class="r-value">PKR {subtotal:,.0f}</span>
+            </div>
+            <div class="receipt-row">
+                <span class="r-label">GST (17%)</span>
+                <span class="r-value">PKR {tax:,.0f}</span>
+            </div>
+            <div class="receipt-row">
+                <span class="r-label">Platform Fee</span>
+                <span class="r-value">PKR {PLATFORM_FEE:,.0f}</span>
+            </div>
+            <div class="receipt-total">
+                <span class="r-label">Total</span>
+                <span class="r-value">PKR {total:,.0f}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.write("")
+
+        # ── Checkout requires login ───────────────────────────────
+        if not st.session_state.get("customer_logged_in"):
+            st.markdown("""
+            <div style='background:#f8f9fa;border:1px solid #e8f5f8;border-radius:10px;
+                        padding:14px 16px;margin-bottom:12px;text-align:center;'>
+                <i class="bi bi-lock-fill" style="color:#1a8fa8;font-size:20px;"></i>
+                <p style='margin:6px 0 0 0;font-size:13px;color:#555;'>
+                    <strong>Sign in</strong> to complete your purchase.<br>
+                    Your cart items are saved.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Sign In to Checkout →", type="primary", use_container_width=True):
+                st.session_state["page_override"] = "Account"
+                st.rerun()
+            return
+
+        # ── Checkout form (signed-in customers only) ──────────────
+        with st.form("checkout_form", clear_on_submit=False):
+            st.markdown("**📦 Delivery Details**")
+            c_name    = st.text_input("Full Name",
+                                      value=st.session_state["current_customer"]["name"])
+            c_phone   = st.text_input("Phone Number", placeholder="+92 XXX XXXXXXX")
+            c_address = st.text_area("Delivery Address", height=72,
+                                     placeholder="House no, Street, City")
+
+            st.markdown("**💳 Payment Method**")
+            pay_method = st.radio("Payment", ["Cash on Delivery (COD)", "Credit/Debit Card"],
+                                  label_visibility="collapsed")
+            c_card = ""
+            if pay_method == "Credit/Debit Card":
+                c_card = st.text_input("Card Number", placeholder="4242 4242 4242 4242")
+                st.caption("Sandbox test card: `4242 4242 4242 4242`")
 
             submitted = st.form_submit_button("Confirm & Pay 🔒", use_container_width=True)
 
             if submitted:
                 if not c_name or not c_address or not c_phone:
-                    st.error("Please fill in your complete name, phone, and delivery address.")
-                elif pay_method == "Credit/Debit Card" and c_card.replace(" ", "") != "4242424242424242":
-                    st.error("Payment Failed: Invalid card. Use sandbox card 4242 4242 4242 4242.")
+                    st.error("Please fill in all delivery fields.")
+                elif pay_method == "Credit/Debit Card" and \
+                     c_card.replace(" ", "") != "4242424242424242":
+                    st.error("Invalid card. Use sandbox: 4242 4242 4242 4242")
                 else:
-                    import time, random
-                    with st.spinner("🔒 Processing Secure Payment..."):
-                        time.sleep(1.5)
+                    with st.spinner("🔒 Processing secure payment…"):
+                        time.sleep(1.2)
                         customer_id = st.session_state["current_customer"]["id"]
-                        if process_checkout(cart, customer_id):
+
+                        # Build flat list for process_checkout (one entry per unit)
+                        cart_list = []
+                        for pid, info in st.session_state["cart"].items():
+                            for _ in range(info["qty"]):
+                                cart_list.append({
+                                    "id":    int(pid),
+                                    "name":  info["name"],
+                                    "price": info["price"],
+                                })
+
+                        if process_checkout(cart_list, customer_id):
                             st.session_state["receipt"] = {
-                                "order_id": f"PTH-{random.randint(1000, 9999)}",
-                                "name": c_name,
-                                "address": c_address,
-                                "method": pay_method,
-                                "total": total,
-                                "items": len(cart)
+                                "order_id":    f"PTH-{random.randint(1000, 9999)}",
+                                "name":        c_name,
+                                "address":     c_address,
+                                "method":      pay_method,
+                                "items_count": sum(v["qty"] for v in st.session_state["cart"].values()),
+                                "subtotal":    subtotal,
+                                "tax":         tax,
+                                "total":       total,
                             }
-                            st.session_state["cart"] = []
+                            st.session_state["cart"] = {}
                             st.rerun()
                         else:
                             st.error("Checkout failed. Please try again.")
@@ -903,46 +895,36 @@ def page_cart():
 
 # ================================================================
 # PAGE: ACCOUNT
-# Purpose: Customer login / register / dashboard. Admin sign-in.
 # ================================================================
 def page_account():
-    # ── Samsung-style teal top bar (static div — no position:fixed) ──
     st.markdown("""
     <div style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
                 padding:22px 32px 22px 32px; border-radius:14px;
-                margin-bottom:28px;
-                box-shadow:0 6px 24px rgba(15,32,39,0.18);">
+                margin-bottom:28px; box-shadow:0 6px 24px rgba(15,32,39,0.18);">
         <div style="display:flex; align-items:center; justify-content:space-between;">
             <div>
                 <div style="font-size:10.5px; font-weight:700; color:#7ecdd8;
                             text-transform:uppercase; letter-spacing:2px; margin-bottom:5px;">
                     <i class="bi bi-person-circle"></i>&nbsp; My Account
                 </div>
-                <span style="font-size:22px; font-weight:800; color:white;
-                             letter-spacing:-0.3px;">
+                <span style="font-size:22px; font-weight:800; color:white; letter-spacing:-0.3px;">
                     Prime TechHub
                 </span>
             </div>
             <div style="text-align:right;">
-                <i class="bi bi-shield-check"
-                   style="font-size:28px; color:rgba(126,205,216,0.6);"></i>
+                <i class="bi bi-shield-check" style="font-size:28px; color:rgba(126,205,216,0.6);"></i>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Watermark — bottom right corner
-    st.markdown("""
-    <div class="samsung-watermark">Prime TechHub Account</div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="samsung-watermark">Prime TechHub Account</div>', unsafe_allow_html=True)
 
-    # ── CASE 1: Customer logged in ────────────────────────────────
     if st.session_state["customer_logged_in"] and st.session_state["current_customer"]:
         customer = st.session_state["current_customer"]
         st.markdown(f"""
         <h4 style='margin-bottom:4px; font-size:22px;'>
-            Hello, {customer['name'].split()[0]}
-            <span style='font-size:18px;'>👋</span>
+            Hello, {customer['name'].split()[0]} <span style='font-size:18px;'>👋</span>
         </h4>
         <p style='color:#888; font-size:13px; margin-top:0;'>
             Welcome back to your Prime TechHub dashboard.
@@ -959,8 +941,7 @@ def page_account():
                 &nbsp; <strong>Email:</strong> {customer['email']}
             </div>""", unsafe_allow_html=True)
             st.write("")
-            st.markdown("**<i class='bi bi-bag-fill'></i> &nbsp;Recent Orders:**",
-                        unsafe_allow_html=True)
+            st.markdown("**<i class='bi bi-bag-fill'></i> &nbsp;Recent Orders:**", unsafe_allow_html=True)
             orders = get_customer_orders(customer["id"])
             if orders:
                 df_o = pd.DataFrame(orders, columns=["Product", "Price (PKR)", "Date"])
@@ -970,10 +951,9 @@ def page_account():
 
         if st.button("Sign Out", type="primary", use_container_width=True):
             st.session_state["customer_logged_in"] = False
-            st.session_state["current_customer"] = None
+            st.session_state["current_customer"]   = None
             st.rerun()
 
-    # ── CASE 2: Admin logged in ───────────────────────────────────
     elif st.session_state["admin_logged_in"]:
         st.success("✅ Signed in as **System Administrator**.")
         st.info("Use the **Admin** tab in the sidebar to manage inventory and sales.")
@@ -981,25 +961,22 @@ def page_account():
             st.session_state["admin_logged_in"] = False
             st.rerun()
 
-    # ── CASE 3: Not logged in — Login / Signup ───────────────────
     else:
-        _, col_mid, _ = st.columns([1.2, 1, 1.2])
+        _, col_mid, _ = st.columns([1, 1.4, 1])
         with col_mid:
             if st.session_state["account_mode"] == "login":
                 st.markdown("""
                 <h4 style='text-align:center; margin-bottom:3px; font-size:22px;
-                           font-weight:700; color:#111;'>Sign In</h4>
+                           font-weight:700; color:#111;'>SIGN IN</h4>
                 <p style='text-align:center; color:#888; font-size:13px; margin-top:0;'>
-                    Continue to your Prime TechHub account
+                    to continue to your Prime TechHub account
                 </p>""", unsafe_allow_html=True)
 
                 with st.container(border=True):
                     with st.form("login_form", clear_on_submit=False):
                         email    = st.text_input("Email / Username")
                         password = st.text_input("Password", type="password")
-                        btn_login = st.form_submit_button(
-                            "SIGN IN", use_container_width=True
-                        )
+                        btn_login = st.form_submit_button("SIGN IN", use_container_width=True)
                         if btn_login:
                             admin = verify_admin(email, password)
                             if admin:
@@ -1009,33 +986,26 @@ def page_account():
                                 customer = verify_customer(email, password)
                                 if customer:
                                     st.session_state["customer_logged_in"] = True
-                                    st.session_state["current_customer"] = customer
+                                    st.session_state["current_customer"]   = customer
                                     st.rerun()
                                 else:
                                     st.error("Account not found. Please check your credentials.")
 
-                # Divider text
                 st.markdown("""
                 <p style='text-align:center; color:#ccc; font-size:12px;
-                           margin:10px 0 8px 0; font-weight:600;'>
-                    — &nbsp;OR&nbsp; —
-                </p>""", unsafe_allow_html=True)
+                           margin:10px 0 8px 0; font-weight:600;'>— &nbsp;OR&nbsp; —</p>
+                """, unsafe_allow_html=True)
 
-                # Google button (decorative)
                 st.markdown("""
-                <a href="https://github.com/Aysha-Nur/Prime-TechHub#authentication-notice"
+                <a href="https://github.com/Ayisha-Nur/Prime-TechHub#authentication-notice"
                    target="_blank" style="text-decoration:none;">
-                    <div style="background:white; border:1px solid #dadce0;
-                                border-radius:7px; padding:9px 20px;
-                                display:flex; align-items:center; justify-content:center;
-                                gap:10px; cursor:pointer;
-                                box-shadow:0 1px 4px rgba(0,0,0,0.06);
-                                margin-bottom:10px;
-                                transition:background 0.2s ease;">
-                        <img src="https://img.icons8.com/color/48/google-logo.png"
-                             style="width:17px;"/>
-                        <span style="font-size:13.5px; font-weight:600;
-                                     color:#5f6368;">
+                    <div style="background:white; border:1px solid #dadce0; border-radius:7px;
+                                padding:9px 20px; display:flex; align-items:center;
+                                justify-content:center; gap:10px; cursor:pointer;
+                                box-shadow:0 1px 4px rgba(0,0,0,0.06); margin-bottom:10px;
+                                transition:box-shadow 0.22s ease;">
+                        <img src="https://img.icons8.com/color/48/google-logo.png" style="width:17px;"/>
+                        <span style="font-size:13.5px;font-weight:600;color:#5f6368;">
                             Sign in with Google
                         </span>
                     </div>
@@ -1047,7 +1017,7 @@ def page_account():
                     use_container_width=True
                 )
 
-            else:  # signup mode
+            else:
                 st.markdown("""
                 <h4 style='text-align:center; margin-bottom:3px; font-size:22px;
                            font-weight:700; color:#111;'>Create Account</h4>
@@ -1060,9 +1030,7 @@ def page_account():
                         name     = st.text_input("Full Name")
                         email    = st.text_input("Email Address")
                         password = st.text_input("Password", type="password")
-                        btn_reg  = st.form_submit_button(
-                            "CREATE ACCOUNT", use_container_width=True
-                        )
+                        btn_reg  = st.form_submit_button("CREATE ACCOUNT", use_container_width=True)
                         if btn_reg:
                             if not name or not email or not password:
                                 st.error("Please fill in all fields.")
@@ -1070,7 +1038,7 @@ def page_account():
                                 if register_customer(name, email, password):
                                     customer = verify_customer(email, password)
                                     st.session_state["customer_logged_in"] = True
-                                    st.session_state["current_customer"] = customer
+                                    st.session_state["current_customer"]   = customer
                                     st.rerun()
                                 else:
                                     st.error("This email is already registered. Please sign in.")
@@ -1084,20 +1052,15 @@ def page_account():
 
 # ================================================================
 # PAGE: ADMIN DASHBOARD
-# Purpose: Add products, view sales ledger, remove products
-# Note: Only visible in sidebar after admin login via Account tab
 # ================================================================
 def page_admin():
-    # Guard: must be admin
     if not st.session_state.get("admin_logged_in"):
         st.error("🔒 Access Denied. Please sign in as Administrator from the Account tab.")
         return
 
     st.markdown("### ⚙️ Admin Dashboard — Inventory Management")
-
     tab1, tab2, tab3 = st.tabs(["➕ Add Product", "📊 Sales Ledger", "🗑️ Remove Product"])
 
-    # TAB 1: Add Product
     with tab1:
         st.markdown("#### Add New Device to Inventory")
         with st.form("add_product_form", clear_on_submit=True):
@@ -1107,7 +1070,6 @@ def page_admin():
             p_stock = st.number_input("Stock Quantity", min_value=0, step=1)
             p_desc  = st.text_area("Description")
             submitted = st.form_submit_button("Add to Inventory", use_container_width=True)
-
             if submitted:
                 if not p_name:
                     st.error("Product name is required.")
@@ -1121,7 +1083,6 @@ def page_admin():
                     conn.close()
                     st.success(f"✅ '{p_name}' added to inventory!")
 
-    # TAB 2: Sales Ledger
     with tab2:
         st.markdown("#### All Sales Records")
         conn = sqlite3.connect("techhub.db")
@@ -1129,21 +1090,17 @@ def page_admin():
             orders_df = pd.read_sql_query(
                 "SELECT o.id, c.name AS customer, o.product_name, o.price, o.sale_date "
                 "FROM orders o LEFT JOIN customers c ON o.customer_id = c.id "
-                "ORDER BY o.sale_date DESC",
-                conn
+                "ORDER BY o.sale_date DESC", conn
             )
         except Exception:
             orders_df = pd.DataFrame()
         conn.close()
-
         if orders_df.empty:
             st.info("No sales recorded yet.")
         else:
             st.dataframe(orders_df, use_container_width=True, hide_index=True)
-            total_revenue = orders_df["price"].sum()
-            st.metric("Total Revenue (PKR)", f"{total_revenue:,.2f}")
+            st.metric("Total Revenue (PKR)", f"{orders_df['price'].sum():,.2f}")
 
-    # TAB 3: Remove Product
     with tab3:
         st.markdown("#### Remove Device from Inventory")
         products_df = get_products()
@@ -1189,20 +1146,53 @@ def page_settings():
 
     with tab3:
         st.markdown("#### Change Password")
-        st.text_input("Current Password", type="password")
-        st.text_input("New Password", type="password")
-        st.button("Update Password")
 
-        st.markdown("<hr style='margin-top: 24px; margin-bottom: 8px;'>", unsafe_allow_html=True)
+        # Only works when customer is logged in
+        if not st.session_state.get("customer_logged_in") or \
+           not st.session_state.get("current_customer"):
+            st.info("🔒 Sign in to your account to change your password.")
+        else:
+            with st.form("change_password_form", clear_on_submit=True):
+                current_pw  = st.text_input("Current Password", type="password")
+                new_pw      = st.text_input("New Password",      type="password")
+                confirm_pw  = st.text_input("Confirm New Password", type="password")
+                pw_submit   = st.form_submit_button(
+                    "Update Password", use_container_width=True
+                )
+
+                if pw_submit:
+                    if not current_pw or not new_pw or not confirm_pw:
+                        st.error("Please fill in all three password fields.")
+                    elif len(new_pw) < 6:
+                        st.error("New password must be at least 6 characters.")
+                    elif new_pw != confirm_pw:
+                        st.error("New password and confirmation do not match.")
+                    elif new_pw == current_pw:
+                        st.warning("New password must be different from the current one.")
+                    else:
+                        customer_id = st.session_state["current_customer"]["id"]
+                        result = update_customer_password(
+                            customer_id, current_pw, new_pw
+                        )
+                        if result == 'success':
+                            st.success("✅ Password updated successfully. Use your new password next time you sign in.")
+                        elif result == 'wrong_password':
+                            st.error("❌ Current password is incorrect.")
+                        else:
+                            st.error("Something went wrong. Please try again.")
+
+        st.markdown("<hr style='margin-top:24px; margin-bottom:8px;'>", unsafe_allow_html=True)
         st.markdown("#### ⚠️ Danger Zone")
-        st.markdown("<p style='color:#666; font-size:13px;'>This will permanently delete your account and all order history.</p>", unsafe_allow_html=True)
-        # Using a separate non-primary button for danger zone to avoid global style conflicts
+        st.markdown(
+            "<p style='color:#666; font-size:13px;'>This will permanently delete your account and all order history.</p>",
+            unsafe_allow_html=True
+        )
         if st.button("Delete My Account", use_container_width=False):
             st.warning("Account deletion is not yet enabled in this build.")
 
 
 # ================================================================
-# PAGE: FAQ
+# PAGE: FAQ — UNTOUCHED
 # ================================================================
 def page_faq():
     st.markdown("### ❓ Frequently Asked Questions")
@@ -1223,7 +1213,6 @@ def page_faq():
     with st.expander("Is my smart home data encrypted?"):
         st.markdown("**Yes.** Prime TechHub uses AES-256 encryption for all data in transit between your devices, our backend, and your mobile client. We never sell your telemetry data to third parties.")
 
-    # FIX 2: Only this box gets teal background — uses scoped class
     st.markdown("""
     <div class="faq-contact-box">
         <i class="bi bi-headset" style="font-size:22px;color:#1a8fa8;"></i>
@@ -1235,8 +1224,9 @@ def page_faq():
     </div>
     """, unsafe_allow_html=True)
 
+
 # ================================================================
-# PAGE: ABOUT US
+# PAGE: ABOUT US — UNTOUCHED
 # ================================================================
 def page_about():
     st.markdown("### 🏢 About Prime TechHub")
@@ -1259,7 +1249,6 @@ def page_about():
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("#### 📊 Platform Highlights")
-    # FIX 3: Hard-coded black metric values — immune to global CSS overrides
     m1, m2, m3, m4 = st.columns(4)
     for col, label, value in [
         (m1, "Products",   "15+"),
@@ -1278,38 +1267,36 @@ def page_about():
 
 
 # ================================================================
-# MAIN ROUTER — the only entry point
+# MAIN ROUTER — handles both sidebar nav AND page_override
+# (page_override is set by the cart header button)
 # ================================================================
 def main():
-    # Step 1: Initialize database
     init_db()
-
-    # Step 2: Initialize session state
     init_session_state()
-
-    # Step 3: Inject CSS once
     inject_global_css()
 
-    # Step 4: Render sidebar and get active page
-    page = render_sidebar()
+    sidebar_page = render_sidebar()
 
-    # Step 5: Route to the correct page function
-    if page == "Home":
-        page_home()
-    elif page == "Filters":
-        page_filters()
-    elif page == "Cart":
-        page_cart()
-    elif page == "Account":
-        page_account()
-    elif page == "Admin":
-        page_admin()
-    elif page == "Settings":
-        page_settings()
-    elif page == "FAQ":
-        page_faq()
-    elif page == "About Us":
-        page_about()
+    # Detect sidebar navigation click → clear any override
+    last = st.session_state.get("_last_sidebar_page", "Home")
+    if sidebar_page != last:
+        st.session_state["page_override"]      = None
+        st.session_state["_last_sidebar_page"] = sidebar_page
+
+    # Effective page: override wins (e.g. cart button), else sidebar
+    active_page = st.session_state.get("page_override") or sidebar_page
+
+    routes = {
+        "Home":     page_home,
+        "Filters":  page_filters,
+        "Cart":     page_cart,
+        "Account":  page_account,
+        "Admin":    page_admin,
+        "Settings": page_settings,
+        "FAQ":      page_faq,
+        "About Us": page_about,
+    }
+    routes.get(active_page, page_home)()
 
 
 if __name__ == "__main__":
