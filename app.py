@@ -260,7 +260,18 @@ def inject_global_css():
 
         /* Vertical gap fix: input in sidebar form */
         div[data-testid="stForm"] div[data-testid="stTextInput"] { margin-bottom: -10px !important; }
-        div[data-testid="stForm"] div[data-testid="stTextInput"]:last-of-type { margin-bottom: 0 !important; }
+        div[data-testid="stForm"] div[data-testid="stTextInput"]:last-of-type { margin-bottom: 0 !important; 
+        }
+        /* Remove the default browser password eye icon */
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear {
+        display: none !important;
+        }
+
+        input[type="password"]::-webkit-contacts-auto-fill-button,
+        input[type="password"]::-webkit-credentials-auto-fill-button {
+        display: none !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -698,7 +709,7 @@ def page_cart():
             <i class="bi bi-cart-x" style="font-size:52px;color:#ccc;"></i>
             <h4 style='color:#999;margin:16px 0 6px 0;'>Your cart is empty</h4>
             <p style='color:#bbb;font-size:13px;'>
-                Browse the Home page to add smart devices.
+                Browse the Home page to shop smart devices.
             </p>
         </div>
         """, unsafe_allow_html=True)
