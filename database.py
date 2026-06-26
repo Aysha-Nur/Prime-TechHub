@@ -119,5 +119,35 @@ def process_checkout(cart_items, customer_id):
     finally: conn.close()
     return success
 
+def update_customer_password(customer_id, current_password, new_password):
+    """
+    Verifies current password then updates to new one.
+    Returns: 'success' | 'wrong_password' | 'error'
+    """
+    conn   = sqlite3.connect('techhub.db')
+    cursor = conn.cursor()
+    try:
+        # Verify current password belongs to this customer
+        cursor.execute(
+            "SELECT id FROM customers WHERE id = ? AND password = ?",
+            (customer_id, current_password)
+        )
+        if not cursor.fetchone():
+            return 'wrong_password'
+
+        # Update to new password
+        cursor.execute(
+            "UPDATE customers SET password = ? WHERE id = ?",
+            (new_password, customer_id)
+        )
+        conn.commit()
+        return 'success'
+    except Exception as e:
+        print(f"Password update error: {e}")
+        conn.rollback()
+        return 'error'
+    finally:
+        conn.close()
+
 if __name__ == '__main__':
     init_db()
