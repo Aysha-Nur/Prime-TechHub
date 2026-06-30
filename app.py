@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ================================================================
 # RULE 1: set_page_config() must be FIRST — never called twice.
@@ -38,8 +39,32 @@ _CATEGORY_META = {
     "Sensors":        ("bi-activity", "linear-gradient(135deg,#ff7e5f,#feb47b)"),
     "Networking":     ("bi-wifi", "linear-gradient(135deg,#00c6ff,#0072ff)"),
     "Audio":          ("bi-speaker-fill", "linear-gradient(135deg,#7f00ff,#e100ff)"),
+    "Security":       ("bi-shield-fill", "linear-gradient(135deg,#dc3545,#fd7e14)")
 }
 
+# ================================================================
+# CATEGORY IMAGE URLS — Unsplash photos mapped per category.
+# Used in render_product_detail() for the full-page detail view.
+# Gradient icon fallback activates automatically if image fails.
+# ================================================================
+_CATEGORY_UNSPLASH = {
+    "Camera":
+        "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=700&auto=format&fit=crop&q=80",
+     "Lighting":
+        "https://images.unsplash.com/photo-1563461660947-507ef49e9c47?w=700&auto=format&fit=crop&q=80",
+    "Smart Plug":
+        "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=700&auto=format&fit=crop&q=80",
+    "Hub/Controller":
+        "https://images.unsplash.com/photo-1518770660439-4636190af475?w=700&auto=format&fit=crop&q=80",
+    "Sensors":
+        "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=700&auto=format&fit=crop&q=80",
+    "Networking":
+        "https://images.unsplash.com/photo-1544717305-2782549b5136?w=700&auto=format&fit=crop&q=80",
+    "Audio":
+        "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=700&auto=format&fit=crop&q=80",
+    "Security":
+        "https://images.unsplash.com/photo-1558002038-1055907df827?w=700&auto=format&fit=crop&q=80",
+}
 
 # ================================================================
 # GLOBAL CSS — injected once at the top, never inside page blocks.
@@ -272,6 +297,24 @@ def inject_global_css():
         input[type="password"]::-webkit-credentials-auto-fill-button {
         display: none !important;
         }
+        /* ── FIX 4: Category pill row — no overlap on wrap ── */
+        div[data-testid="stRadio"] > div[role="radiogroup"] {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 8px 10px !important;
+            row-gap: 14px !important;
+            margin-bottom: 16px !important;
+            align-items: center !important;
+        }
+        div[data-testid="stRadio"] label {
+            margin-bottom: 0 !important;
+            line-height: 1 !important;
+            white-space: nowrap !important;
+        }
+        /* Add breathing room below the entire radio row */
+        div[data-testid="stRadio"] {
+            margin-bottom: 12px !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -290,6 +333,8 @@ def init_session_state():
         "show_login_message":  False,
         "page_override":       None,    # set by cart header button
         "_last_sidebar_page":  "Home",  # detect sidebar nav changes
+        "selected_product":    None,    # int product ID when viewing detail, else None
+        "_restore_scroll": False,   # set True by Back to Shop to trigger scroll restore
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -397,11 +442,244 @@ def _build_showcase_html(products_df):
     </div>
     <div class="showcase-scroll" style="padding-bottom:8px;">{cards}</div>"""
 
+# ================================================================
+# render_product_detail(product_id)
+# Standalone detail view. Called by page_home() when
+# selected_product is set. Hides the grid completely.
+# Image loads from _CATEGORY_UNSPLASH; gradient icon fallback
+# fires automatically via HTML onerror if image fails (offline).
+# ================================================================
+def render_product_detail(product_id: int):
+    products_df = get_products()
+    if products_df.empty:
+        st.session_state["selected_product"] = None
+        return
+
+    match = products_df[products_df["id"] == product_id]
+    if match.empty:
+        st.session_state["selected_product"] = None
+        return
+
+    row      = match.iloc[0]
+    pid      = str(int(row["id"]))
+    cat      = str(row.get("category", ""))
+    stock    = int(row.get("stock", 0))
+    icon, gradient = _CATEGORY_META.get(
+        cat, ("bi-box-fill", "linear-gradient(135deg,#1a2a3a,#2c5364)")
+    )
+    img_url  = _CATEGORY_UNSPLASH.get(cat, "")
+
+    # ── Back button — forced to front layer above sidebar overlay ──
+    st.markdown("""
+    <style>
+        /* Scope: only the first button block in the main content area */
+        section[data-testid="stMain"] div[data-testid="stButton"]:first-of-type,
+        section[data-testid="stMain"] div[data-testid="stButton"]:first-of-type > button {
+            position: relative !important;
+            z-index: 999999 !important;
+            pointer-events: all !important;
+        }
+        /* Also push the button container above the sidebar collapse control */
+        button[data-testid="collapsedControl"] { z-index: 99 !important; }
+    </style>
+    """, unsafe_allow_html=True)
+    if st.button("← Back to Shop", key="back_to_shop_btn"):
+        st.session_state["selected_product"] = None
+        st.session_state["_restore_scroll"]  = True   # triggers scroll restore (Fix 5)
+        st.rerun()
+
+    st.markdown("<hr style='margin:0.5rem 0 1.5rem 0;'>", unsafe_allow_html=True)
+
+    col_img, col_info = st.columns([1, 1.15])
+
+    # ── LEFT: product image + specs ───────────────────────────────
+    with col_img:
+        # Image with inline onerror fallback to gradient icon
+        safe_gradient  = gradient.replace("'", "\\'")
+        safe_icon      = icon
+        fallback_style = (
+            f"background:{safe_gradient};height:290px;display:flex;"
+            f"align-items:center;justify-content:center;border-radius:16px;"
+        )
+        if img_url:
+            st.markdown(f"""
+            <div style='border-radius:16px;overflow:hidden;
+                        box-shadow:0 8px 32px rgba(0,0,0,0.13);margin-bottom:16px;'>
+                <img src="{img_url}"
+                     style='width:100%;height:290px;object-fit:cover;display:block;'
+                     onerror="this.parentElement.style='border-radius:16px;{fallback_style}';
+                              this.parentElement.innerHTML='<i class=\\'bi {safe_icon}\\' style=\\'font-size:80px;color:rgba(255,255,255,0.9);\\'></i>';">
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style='{fallback_style}box-shadow:0 8px 32px rgba(0,0,0,0.13);margin-bottom:16px;'>
+                <i class="bi {icon}" style="font-size:80px;color:rgba(255,255,255,0.9);"></i>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Specs panel
+        st.markdown(f"""
+        <div style='background:#f8f9fa;border-radius:12px;padding:14px 16px;'>
+            <div style='font-size:10px;font-weight:700;color:#1a8fa8;
+                        text-transform:uppercase;letter-spacing:1.4px;margin-bottom:10px;'>
+                <i class="bi bi-list-check"></i>&nbsp; Key Specifications
+            </div>
+            <div style='font-size:13px;color:#444;line-height:2.2;'>
+                <div><strong>Category:</strong>&nbsp; {cat}</div>
+                <div><strong>Connectivity:</strong>&nbsp; Wi-Fi 2.4 / 5 GHz</div>
+                <div><strong>Compatibility:</strong>&nbsp; Alexa · Google · Siri</div>
+                <div><strong>Warranty:</strong>&nbsp; 1-Year Limited Hardware</div>
+                <div><strong>Returns:</strong>&nbsp; 30-Day Money-Back</div>
+            </div>]
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── RIGHT: name, price, description, stock, qty, add to cart ─
+    with col_info:
+        st.markdown(f"""
+        <div style='font-size:10.5px;font-weight:700;color:#1a8fa8;
+                    text-transform:uppercase;letter-spacing:1.4px;margin-bottom:8px;'>
+            <i class="bi {icon}"></i>&nbsp; {cat}
+        </div>
+        <h2 style='margin:0 0 4px 0;font-size:26px;font-weight:800;
+                   color:#111;line-height:1.2;'>
+            {row['name']}
+        </h2>
+        <div style='font-size:32px;font-weight:900;color:#1a8fa8;
+                    margin:14px 0 6px 0;letter-spacing:-0.5px;'>
+            PKR {row['price']:,.0f}
+        </div>
+        <p style='color:#555;font-size:14.5px;line-height:1.85;margin-bottom:18px;'>
+            {row.get('description', '')}
+        </p>
+        """, unsafe_allow_html=True)
+
+        # Stock status
+        if stock == 0:
+            st.error("❌ Currently out of stock — check back soon")
+        elif stock <= 5:
+            st.error(f"⚠️ Only {stock} left — order soon!")
+        elif stock <= 20:
+            st.warning(f"⏳ Low stock — {stock} units remaining")
+        else:
+            st.success(f"✅ In Stock — {stock} units available")
+
+        if stock > 0:
+            qty = st.number_input(
+                "Quantity",
+                min_value=1, max_value=min(stock, 20),
+                value=1, step=1,
+                key=f"dpd_qty_{pid}"
+            )
+            if st.button("🛒  Add to Cart", type="primary",
+                         use_container_width=True, key=f"dpd_atc_{pid}"):
+                cart = st.session_state["cart"]
+                if pid in cart:
+                    cart[pid]["qty"] += int(qty)
+                else:
+                    cart[pid] = {
+                        "qty":      int(qty),
+                        "name":     row["name"],
+                        "price":    float(row["price"]),
+                        "category": cat,
+                    }
+                st.toast(f"✅ {qty}× {row['name']} added to cart!")
+
+        # Trust badges
+        st.markdown("""
+        <div style='margin-top:20px;padding:14px 16px;background:#f8f9fa;
+                    border-radius:12px;font-size:13px;color:#555;line-height:2.3;'>
+            <div><i class="bi bi-truck" style='color:#1a8fa8'></i>&nbsp;
+                 <strong>Free delivery</strong> on orders over PKR 5,000</div>
+            <div><i class="bi bi-arrow-counterclockwise" style='color:#1a8fa8'></i>&nbsp;
+                 <strong>30-day returns</strong> — no questions asked</div>
+            <div><i class="bi bi-shield-check" style='color:#1a8fa8'></i>&nbsp;
+                 <strong>1-year hardware warranty</strong> included</div>
+            <div><i class="bi bi-lock-fill" style='color:#1a8fa8'></i>&nbsp;
+                 <strong>Secure checkout</strong> — SSL encrypted</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+# ── NEW: Featured section with real Streamlit click callbacks ──
+def _render_featured_section(products_df):
+    """
+    Replaces _build_showcase_html. Uses st.columns so each card
+    fires st.session_state.selected_product on click.
+    Shows one product per category, up to featured slots.
+    """
+    featured = products_df.drop_duplicates(subset=["category"]).head(4)
+    if featured.empty:
+        return
+
+    st.markdown("""
+    <div style="margin:0 0 10px 0;">
+        <span style="font-size:10.5px;font-weight:700;color:#1a8fa8;
+                     text-transform:uppercase;letter-spacing:1.6px;">
+            <i class="bi bi-stars"></i>&nbsp; Featured Devices
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    feat_cols = st.columns(len(featured))
+    for fc, (_, row) in zip(feat_cols, featured.iterrows()):
+        icon, gradient = _CATEGORY_META.get(
+            row["category"], ("bi-box-fill", "linear-gradient(135deg,#1a2a3a,#2c5364)")
+        )
+        desc_raw = str(row.get("description", ""))
+        desc     = desc_raw[:48] + "…" if len(desc_raw) > 48 else desc_raw
+        with fc:
+            with st.container(border=True):
+                st.markdown(f"""
+                <div style="background:{gradient};height:90px;border-radius:10px;
+                            display:flex;align-items:center;justify-content:center;
+                            margin-bottom:10px;">
+                    <i class="bi {icon}" style="font-size:34px;
+                       color:rgba(255,255,255,0.92);"></i>
+                </div>
+                <div style="font-size:9.5px;font-weight:700;color:#1a8fa8;
+                            text-transform:uppercase;letter-spacing:1.2px;
+                            margin-bottom:3px;">{row['category']}</div>
+                <div style="font-size:13.5px;font-weight:600;color:#111;
+                            line-height:1.3;margin-bottom:3px;">{row['name']}</div>
+                <div style="font-size:14px;font-weight:800;color:#1a8fa8;
+                            margin-bottom:8px;">PKR {row['price']:,.0f}</div>
+                """, unsafe_allow_html=True)
+                if st.button("View →", key=f"feat_{row['id']}", use_container_width=True):
+                    st.session_state["selected_product"] = int(row["id"])
+                    st.rerun()        
 
 # ================================================================
 # PAGE: HOME
 # ================================================================
 def page_home():
+    # ── Detail view gate: if a product is selected, show detail instead of grid ──
+    if st.session_state.get("selected_product") is not None:
+        products_df_all = get_products()
+        if not products_df_all.empty:
+            match = products_df_all[products_df_all["id"] == st.session_state["selected_product"]]
+            if not match.empty:
+                render_product_detail(int(match.iloc[0]["id"]))
+                return
+        st.session_state["selected_product"] = None   # product not found — reset
+        
+        # ── FIX 5a: Restore scroll position when returning from detail view ──
+    if st.session_state.get("_restore_scroll"):
+        components.html("""
+        <script>
+            (function() {
+                var saved = sessionStorage.getItem("pth_scroll_y");
+                if (saved) {
+                    setTimeout(function() {
+                        window.parent.scrollTo({ top: parseInt(saved), behavior: "smooth" });
+                    }, 280);
+                }
+            })();
+        </script>
+        """, height=0, scrolling=False)
+        st.session_state["_restore_scroll"] = False
+
+    # ── Existing header columns start here (unchanged) ──
     h1, h2, h3 = st.columns([1, 1.8, 0.9])
 
     with h1:
@@ -490,20 +768,20 @@ def page_home():
     products_df = get_products()
 
     if not products_df.empty:
-        st.markdown(_build_showcase_html(products_df), unsafe_allow_html=True)
-        st.markdown("<div style='margin-bottom:22px;'></div>", unsafe_allow_html=True)
+        _render_featured_section(products_df)
+        st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
 
     st.markdown("""
     <div style="display:flex; align-items:center; margin:8px 0 14px 0; gap:12px;">
         <span style="font-size:11px; font-weight:700; color:#1a8fa8;
                      text-transform:uppercase; letter-spacing:1.6px; white-space:nowrap;">
-            <i class="bi bi-grid-3x3-gap-fill"></i>&nbsp; All Devices
+            <i class="bi bi-grid-3x3-gap-fill"></i>&nbsp; All CATAGORIES
         </span>
         <hr style="flex:1; margin:0; border-color:#ececec;">
     </div>
     """, unsafe_allow_html=True)
 
-    CATEGORIES = ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio"]
+    CATEGORIES = ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio", "Security"]
     category_filter = st.radio("Category", CATEGORIES, horizontal=True, label_visibility="collapsed")
     st.write("")
 
@@ -537,6 +815,7 @@ def page_home():
         "Camera": "bi-camera-video-fill", "Lighting": "bi-lightbulb-fill",
         "Smart Plug": "bi-plug-fill", "Hub/Controller": "bi-cpu-fill",
         "Sensors": "bi-activity", "Networking": "bi-wifi", "Audio": "bi-speaker-fill",
+        "Security": "bi-shield-fill",
     }
 
     for i, (_, row) in enumerate(filtered_df.iterrows()):
@@ -546,6 +825,36 @@ def page_home():
 
         with col:
             with st.container(border=True):
+                # ── Thumbnail: Unsplash image with gradient fallback ──
+                _thumb_url  = _CATEGORY_UNSPLASH.get(row.get("category", ""), "")
+                _, _grad    = _CATEGORY_META.get(
+                    row.get("category", ""),
+                    ("bi-box-fill", "linear-gradient(135deg,#1a2a3a,#2c5364)")
+                )
+                if _thumb_url:
+                    st.markdown(f"""
+                    <div style='border-radius:10px;overflow:hidden;
+                                height:110px;margin-bottom:8px;'>
+                        <img src="{_thumb_url}"
+                             style='width:100%;height:110px;
+                                    object-fit:cover;display:block;'
+                             onerror="this.parentElement.style.background='{_grad}';
+                                      this.parentElement.style.display='flex';
+                                      this.parentElement.style.alignItems='center';
+                                      this.parentElement.style.justifyContent='center';
+                                      this.remove();">
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div style='background:{_grad};border-radius:10px;height:110px;
+                                display:flex;align-items:center;justify-content:center;
+                                margin-bottom:8px;'>
+                        <i class="bi {cat_icon}" style="font-size:32px;
+                           color:rgba(255,255,255,0.9);"></i>
+                    </div>
+                    """, unsafe_allow_html=True)
+
                 st.markdown(f"""
                 <div style="font-size:11px; font-weight:700; color:#1a8fa8;
                             text-transform:uppercase; letter-spacing:1.2px; margin-bottom:6px;">
@@ -572,19 +881,36 @@ def page_home():
                 else:
                     st.markdown(f'<div style="font-size:12px;color:#27ae60;font-weight:600;margin-bottom:8px;"><i class="bi bi-check-circle-fill"></i>&nbsp;In Stock ({row["stock"]} units)</div>', unsafe_allow_html=True)
 
-                # ── Add to Cart → stores full product info in dict ──
-                if st.button("Add to Cart", type="primary", key=f"add_{row['id']}", use_container_width=True):
-                    cart = st.session_state["cart"]
-                    if pid in cart:
-                        cart[pid]["qty"] += 1
-                    else:
-                        cart[pid] = {
-                            "qty":      1,
-                            "name":     row["name"],
-                            "price":    float(row["price"]),
-                            "category": row.get("category", ""),
-                        }
-                    st.toast(f"✅ {row['name']} added to cart!")
+                # ── View Details + Add to Cart ──────────────────────
+                btn_left, btn_right = st.columns(2)
+                with btn_left:
+                    if st.button("View Details", key=f"det_{row['id']}", use_container_width=True):
+                        st.session_state["selected_product"] = int(row["id"])
+                        st.rerun()
+                with btn_right:
+                    if st.button("Add to Cart", type="primary", key=f"add_{row['id']}", use_container_width=True):
+                        cart = st.session_state["cart"]
+                        if pid in cart:
+                            cart[pid]["qty"] += 1
+                        else:
+                            cart[pid] = {
+                                "qty":      1,
+                                "name":     row["name"],
+                                "price":    float(row["price"]),
+                                "category": row.get("category", ""),
+                            }
+                        st.toast(f"✅ {row['name']} added to cart!")
+                        # ── FIX 5b: Continuously track scroll position while on the grid ──
+                        components.html("""
+                        <script>
+                        (function() {
+                         window.parent.addEventListener("scroll", function() {
+                        sessionStorage.setItem("pth_scroll_y",
+                        String(window.parent.scrollY));
+                        }, { passive: true });
+                        })();
+                        </script>
+                        """, height=0, scrolling=False)
 
 
 # ================================================================
@@ -612,6 +938,9 @@ def page_filters():
         in_stock_only = st.checkbox("In-Stock Only", value=True)
 
     with col_results:
+        # Initialize cart reference at block scope — prevents UnboundLocalError
+        # in Add to Cart button handlers below
+        cart = st.session_state.setdefault("cart", {})
         filtered = products_df.copy()
         if selected_cats:
             filtered = filtered[filtered["category"].isin(selected_cats)]
@@ -632,14 +961,25 @@ def page_filters():
                         st.markdown(f"<div style='font-size:18px;font-weight:500;'>{row['name']}</div>", unsafe_allow_html=True)
                         st.caption(f"📂 {row['category']}")
                         st.markdown(f"<div style='font-size:17px;font-weight:700;margin:8px 0;'>PKR {row['price']:,.0f}</div>", unsafe_allow_html=True)
-                        if st.button("Add to Cart", key=f"filter_add_{row['id']}", use_container_width=True):
-                            cart = st.session_state["cart"]
-                            if pid in cart:
-                                cart[pid]["qty"] += 1
-                            else:
-                                cart[pid] = {"qty": 1, "name": row["name"],
-                                             "price": float(row["price"]), "category": row.get("category", "")}
-                            st.toast(f"✅ Added {row['name']} to cart!")
+                        fd, fc = st.columns(2)
+                        with fd:
+                            if st.button("Details", key=f"fdet_{row['id']}", use_container_width=True):
+                                st.session_state["selected_product"] = int(row["id"])
+                                st.session_state["page_override"]    = "Home"
+                                st.rerun()
+                        with fc:
+                            if st.button("Add to Cart", key=f"filter_add_{row['id']}", use_container_width=True):
+                                # cart already initialized at col_results scope above
+                                if pid in cart:
+                                    cart[pid]["qty"] += 1
+                                else:
+                                    cart[pid] = {
+                                        "qty":      1,
+                                        "name":     row["name"],
+                                        "price":    float(row["price"]),
+                                        "category": row.get("category", ""),
+                                    }
+                                st.toast(f"✅ Added {row['name']} to cart!")
 
 
 # ================================================================
@@ -1292,6 +1632,7 @@ def main():
     last = st.session_state.get("_last_sidebar_page", "Home")
     if sidebar_page != last:
         st.session_state["page_override"]      = None
+        st.session_state["selected_product"]   = None   # clear detail on nav switch
         st.session_state["_last_sidebar_page"] = sidebar_page
 
     # Effective page: override wins (e.g. cart button), else sidebar
