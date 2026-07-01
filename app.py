@@ -39,7 +39,8 @@ _CATEGORY_META = {
     "Sensors":        ("bi-activity", "linear-gradient(135deg,#ff7e5f,#feb47b)"),
     "Networking":     ("bi-wifi", "linear-gradient(135deg,#00c6ff,#0072ff)"),
     "Audio":          ("bi-speaker-fill", "linear-gradient(135deg,#7f00ff,#e100ff)"),
-    "Security":       ("bi-shield-fill", "linear-gradient(135deg,#dc3545,#fd7e14)")
+    "Security":       ("bi-shield-fill", "linear-gradient(135deg,#dc3545,#fd7e14)"),
+    "Climate":        ("bi-thermometer-half", "linear-gradient(135deg, #2980b9, #2c3e50)"),
 }
 
 # ================================================================
@@ -49,21 +50,23 @@ _CATEGORY_META = {
 # ================================================================
 _CATEGORY_UNSPLASH = {
     "Camera":
-        "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=700&auto=format&fit=crop&q=80",
+        "https://plus.unsplash.com/premium_photo-1729574957020-69b6ae3652d9?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0",
      "Lighting":
-        "https://images.unsplash.com/photo-1563461660947-507ef49e9c47?w=700&auto=format&fit=crop&q=80",
-    "Smart Plug":
-        "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=700&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1738045419183-79fd0707ffe5?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0",
+     "Smart Plug":
+        "https://images.unsplash.com/photo-1733985741997-35bd14981faf?fm=jpg&q=60&w=700&auto=format&fit=crop&ixlib=rb-4.1.0",
     "Hub/Controller":
-        "https://images.unsplash.com/photo-1518770660439-4636190af475?w=700&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1752262167753-37a0ec83f614?fm=jpg&q=60&w=700&auto=format&fit=crop&ixlib=rb-4.1.0",
     "Sensors":
-        "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=700&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1636569608385-58efc32690ea?fm=jpg&q=60&w=700&auto=format&fit=crop&ixlib=rb-4.1.0",
     "Networking":
-        "https://images.unsplash.com/photo-1544717305-2782549b5136?w=700&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1750712263185-edde9f359e33?fm=jpg&q=60&w=700&auto=format&fit=crop&ixlib=rb-4.1.0",
     "Audio":
         "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=700&auto=format&fit=crop&q=80",
     "Security":
         "https://images.unsplash.com/photo-1558002038-1055907df827?w=700&auto=format&fit=crop&q=80",
+    "Climate":
+        "https://images.unsplash.com/photo-1545259741-2ea3ebf61fa3?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0,"
 }
 
 # ================================================================
@@ -90,7 +93,13 @@ def inject_global_css():
         .block-container {
             padding-top: 1.2rem !important;
             padding-bottom: 2rem !important;
-            max-width: 96% !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+            max-width: 100% !important;
+            margin-left: 0 !important;
+        }
+        div[data-testid="stButton"] > button p {
+            white-space: nowrap !important;
         }
         div[data-testid="InputInstructions"] { display: none !important; }
         hr { border-color: var(--border-light) !important; opacity: 1; }
@@ -297,23 +306,42 @@ def inject_global_css():
         input[type="password"]::-webkit-credentials-auto-fill-button {
         display: none !important;
         }
-        /* ── FIX 4: Category pill row — no overlap on wrap ── */
+        /* ── Category pills: breathing room above + below, no early wrap ── */
+        div[data-testid="stRadio"] {
+            margin-top: 10px !important;
+            margin-bottom: 6px !important;
+        }
         div[data-testid="stRadio"] > div[role="radiogroup"] {
             display: flex !important;
-            flex-wrap: wrap !important;
-            gap: 8px 10px !important;
-            row-gap: 14px !important;
-            margin-bottom: 16px !important;
-            align-items: center !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            width: 100% !important;
+            gap: 10px !important;
+            padding-bottom: 10px !important;
+            padding-top: 4px !important;
+            scrollbar-width: thin !important;
+            scrollbar-color: #c8d8dc transparent !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"]::-webkit-scrollbar { height: 4px !important; }
+        div[data-testid="stRadio"] > div[role="radiogroup"]::-webkit-scrollbar-thumb {
+            background: #c8d8dc !important; border-radius: 10px !important;
         }
         div[data-testid="stRadio"] label {
             margin-bottom: 0 !important;
             line-height: 1 !important;
             white-space: nowrap !important;
+            flex-shrink: 0 !important;
         }
-        /* Add breathing room below the entire radio row */
-        div[data-testid="stRadio"] {
-            margin-bottom: 12px !important;
+        /* Pull selectbox up exactly the invisible label height Streamlit reserves */
+        div[data-testid="stColumn"]:nth-child(2) div[data-testid="stSelectbox"] {
+            margin-top: -12px !important;
+        }
+        div[data-testid="stColumn"]:nth-child(3) div[data-testid="stButton"] {
+            margin-top: 8px !important;
+        }
+        /* Cart button: tiny top nudge down to meet midline */
+        div[data-testid="stColumn"]:nth-child(3) div[data-testid="stButton"] {
+            margin-top: 4px !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -503,12 +531,11 @@ def render_product_detail(product_id: int):
         )
         if img_url:
             st.markdown(f"""
-            <div style='border-radius:16px;overflow:hidden;
-                        box-shadow:0 8px 32px rgba(0,0,0,0.13);margin-bottom:16px;'>
+            <div style='border-radius:18px; overflow:hidden;
+                        box-shadow:0 8px 32px rgba(0,0,0,0.13); margin-bottom:16px;'>
                 <img src="{img_url}"
-                     style='width:100%;height:290px;object-fit:cover;display:block;'
-                     onerror="this.parentElement.style='border-radius:16px;{fallback_style}';
-                              this.parentElement.innerHTML='<i class=\\'bi {safe_icon}\\' style=\\'font-size:80px;color:rgba(255,255,255,0.9);\\'></i>';">
+                     style='width:100%; height:290px; object-fit:cover; display:block;'
+                     onerror="this.parentElement.innerHTML='<div style=\\'background:{gradient};height:290px;display:flex;align-items:center;justify-content:center;\\'><i class=\\'bi {icon}\\' style=\\'font-size:80px;color:rgba(255,255,255,0.9);\\'></i></div>'">
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -604,15 +631,42 @@ def render_product_detail(product_id: int):
 # ── NEW: Featured section with real Streamlit click callbacks ──
 def _render_featured_section(products_df):
     """
-    Replaces _build_showcase_html. Uses st.columns so each card
-    fires st.session_state.selected_product on click.
-    Shows one product per category, up to featured slots.
+    Uses st.container(key=...) — Streamlit ≥1.32 renders this as a real
+    DOM node with class `st-key-featured_scroll_box`, so CSS can reliably
+    target the columns inside it (markdown-wrapping doesn't work).
     """
-    featured = products_df.drop_duplicates(subset=["category"]).head(4)
+    featured = products_df.drop_duplicates(subset=["category"]).head(9)
     if featured.empty:
         return
 
     st.markdown("""
+    <style>
+       /* Featured scroll: natural overflow, card width drives scroll prompt */
+        .st-key-featured_scroll_box div[data-testid="stHorizontalBlock"] {
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            flex-wrap: nowrap !important;
+            width: 100% !important;
+            padding-bottom: 16px !important;
+            scrollbar-width: thin !important;
+            scrollbar-color: #c8d8dc transparent !important;
+            /* NO max-width — that caused white leak */
+        }
+        .st-key-featured_scroll_box div[data-testid="stHorizontalBlock"]::-webkit-scrollbar {
+            height: 4px !important;
+        }
+        .st-key-featured_scroll_box div[data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb {
+            background: #c8d8dc !important;
+            border-radius: 10px !important;
+        }
+        /* Each card fixed at 260px — viewport ÷ card width = natural visible count */
+        /* ~1000px content area ÷ 260px = ~3.8 cards → 4th card partially visible → scroll cue */
+        .st-key-featured_scroll_box div[data-testid="stColumn"] {
+            min-width: 260px !important;
+            max-width: 260px !important;
+            flex: 0 0 260px !important;
+        }
+    </style>
     <div style="margin:0 0 10px 0;">
         <span style="font-size:10.5px;font-weight:700;color:#1a8fa8;
                      text-transform:uppercase;letter-spacing:1.6px;">
@@ -621,38 +675,44 @@ def _render_featured_section(products_df):
     </div>
     """, unsafe_allow_html=True)
 
-    feat_cols = st.columns(len(featured))
-    for fc, (_, row) in zip(feat_cols, featured.iterrows()):
-        icon, gradient = _CATEGORY_META.get(
-            row["category"], ("bi-box-fill", "linear-gradient(135deg,#1a2a3a,#2c5364)")
-        )
-        desc_raw = str(row.get("description", ""))
-        desc     = desc_raw[:48] + "…" if len(desc_raw) > 48 else desc_raw
-        with fc:
-            with st.container(border=True):
-                st.markdown(f"""
-                <div style="background:{gradient};height:90px;border-radius:10px;
-                            display:flex;align-items:center;justify-content:center;
-                            margin-bottom:10px;">
-                    <i class="bi {icon}" style="font-size:34px;
-                       color:rgba(255,255,255,0.92);"></i>
-                </div>
-                <div style="font-size:9.5px;font-weight:700;color:#1a8fa8;
-                            text-transform:uppercase;letter-spacing:1.2px;
-                            margin-bottom:3px;">{row['category']}</div>
-                <div style="font-size:13.5px;font-weight:600;color:#111;
-                            line-height:1.3;margin-bottom:3px;">{row['name']}</div>
-                <div style="font-size:14px;font-weight:800;color:#1a8fa8;
-                            margin-bottom:8px;">PKR {row['price']:,.0f}</div>
-                """, unsafe_allow_html=True)
-                if st.button("View →", key=f"feat_{row['id']}", use_container_width=True):
-                    st.session_state["selected_product"] = int(row["id"])
-                    st.rerun()        
+    with st.container(key="featured_scroll_box"):
+        feat_cols = st.columns(len(featured))
+        for fc, (_, row) in zip(feat_cols, featured.iterrows()):
+            icon, gradient = _CATEGORY_META.get(
+                row["category"], ("bi-box-fill", "linear-gradient(135deg,#1a2a3a,#2c5364)")
+            )
+            with fc:
+                with st.container(border=True):
+                    st.markdown(f"""
+                    <div style="background:{gradient};height:90px;border-radius:10px;
+                                display:flex;align-items:center;justify-content:center;
+                                margin-bottom:10px;">
+                        <i class="bi {icon}" style="font-size:34px;
+                           color:rgba(255,255,255,0.92);"></i>
+                    </div>
+                    <div style="font-size:9.5px;font-weight:700;color:#1a8fa8;
+                                text-transform:uppercase;letter-spacing:1.2px;
+                                margin-bottom:3px;">{row['category']}</div>
+                    <div style="font-size:13px;font-weight:600;color:#111;
+                                line-height:1.3;margin-bottom:3px;
+                                white-space:nowrap;overflow:hidden;
+                                text-overflow:ellipsis;">{row['name']}</div>
+                    <div style="font-size:14px;font-weight:800;color:#1a8fa8;
+                                margin-bottom:8px;">PKR {row['price']:,.0f}</div>
+                    """, unsafe_allow_html=True)
+                    if st.button("View →", key=f"feat_{row['id']}", use_container_width=True):
+                        st.session_state["selected_product"] = int(row["id"])
+                        st.rerun()
 
 # ================================================================
 # PAGE: HOME
 # ================================================================
 def page_home():
+    # Cache products in session state for this render cycle only
+    # (re-fetches once per sidebar navigation, not on every widget click)
+    if "cached_products" not in st.session_state:
+        st.session_state["cached_products"] = get_products()
+    products_df = st.session_state["cached_products"]
     # ── Detail view gate: if a product is selected, show detail instead of grid ──
     if st.session_state.get("selected_product") is not None:
         products_df_all = get_products()
@@ -663,21 +723,45 @@ def page_home():
                 return
         st.session_state["selected_product"] = None   # product not found — reset
         
-        # ── FIX 5a: Restore scroll position when returning from detail view ──
-    if st.session_state.get("_restore_scroll"):
-        components.html("""
-        <script>
-            (function() {
-                var saved = sessionStorage.getItem("pth_scroll_y");
-                if (saved) {
-                    setTimeout(function() {
-                        window.parent.scrollTo({ top: parseInt(saved), behavior: "smooth" });
-                    }, 280);
+        # ── Scroll tracker: always-on listener + conditional restore ──
+    _do_restore = st.session_state.get("_restore_scroll", False)
+    st.session_state["_restore_scroll"] = False
+
+    _restore_js = ""
+    if _do_restore:
+        _restore_js = """
+        var _savedY = sessionStorage.getItem("pth_scroll_y");
+        if (_savedY && parseInt(_savedY) > 80) {
+            var _attempts = 0;
+            var _maxAttempts = 8;
+            var _target = parseInt(_savedY);
+            var _retryScroll = setInterval(function() {
+                _attempts++;
+                window.parent.scrollTo({ top: _target, behavior: "instant" });
+                if (_attempts >= _maxAttempts) {
+                    clearInterval(_retryScroll);
                 }
-            })();
-        </script>
-        """, height=0, scrolling=False)
-        st.session_state["_restore_scroll"] = False
+            }, 250);
+        }
+        """
+
+    components.html(f"""
+    <script>
+        (function() {{
+            window.parent._pthTrackingEnabled = true;
+            if (!window.parent._pthScrollBound) {{
+                window.parent._pthScrollBound = true;
+                window.parent.addEventListener("scroll", function() {{
+                    if (window.parent._pthTrackingEnabled) {{
+                        sessionStorage.setItem("pth_scroll_y",
+                            String(window.parent.scrollY));
+                    }}
+                }}, {{ passive: true }});
+            }}
+            {_restore_js}
+        }})();
+    </script>
+    """, height=0, scrolling=False)
 
     # ── Existing header columns start here (unchanged) ──
     h1, h2, h3 = st.columns([1, 1.8, 0.9])
@@ -781,9 +865,9 @@ def page_home():
     </div>
     """, unsafe_allow_html=True)
 
-    CATEGORIES = ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio", "Security"]
+    CATEGORIES = ["All", "Camera", "Lighting", "Smart Plug", "Hub/Controller", "Sensors", "Networking", "Audio", "Security", "Climate"]
     category_filter = st.radio("Category", CATEGORIES, horizontal=True, label_visibility="collapsed")
-    st.write("")
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
     if products_df.empty:
         st.warning("Inventory is empty. Add products via the Admin tab.")
@@ -815,7 +899,7 @@ def page_home():
         "Camera": "bi-camera-video-fill", "Lighting": "bi-lightbulb-fill",
         "Smart Plug": "bi-plug-fill", "Hub/Controller": "bi-cpu-fill",
         "Sensors": "bi-activity", "Networking": "bi-wifi", "Audio": "bi-speaker-fill",
-        "Security": "bi-shield-fill",
+        "Security": "bi-shield-fill","Climate": "bi-thermometer-half",
     }
 
     for i, (_, row) in enumerate(filtered_df.iterrows()):
@@ -838,11 +922,7 @@ def page_home():
                         <img src="{_thumb_url}"
                              style='width:100%;height:110px;
                                     object-fit:cover;display:block;'
-                             onerror="this.parentElement.style.background='{_grad}';
-                                      this.parentElement.style.display='flex';
-                                      this.parentElement.style.alignItems='center';
-                                      this.parentElement.style.justifyContent='center';
-                                      this.remove();">
+                             onerror="this.parentElement.innerHTML='<div style=\\'background:{_grad};height:110px;border-radius:10px;display:flex;align-items:center;justify-content:center;\\'><i class=\\'bi {cat_icon}\\' style=\\'font-size:32px;color:rgba(255,255,255,0.9);\\'></i></div>';">
                     </div>
                     """, unsafe_allow_html=True)
                 else:
@@ -900,17 +980,6 @@ def page_home():
                                 "category": row.get("category", ""),
                             }
                         st.toast(f"✅ {row['name']} added to cart!")
-                        # ── FIX 5b: Continuously track scroll position while on the grid ──
-                        components.html("""
-                        <script>
-                        (function() {
-                         window.parent.addEventListener("scroll", function() {
-                        sessionStorage.setItem("pth_scroll_y",
-                        String(window.parent.scrollY));
-                        }, { passive: true });
-                        })();
-                        </script>
-                        """, height=0, scrolling=False)
 
 
 # ================================================================
@@ -925,7 +994,7 @@ def page_filters():
         st.info("Inventory is empty.")
         return
 
-    col_filter, col_results = st.columns([1, 3])
+    col_filter, col_results = st.columns([0.8, 3.2])
 
     with col_filter:
         st.markdown("#### Filters")
@@ -1631,6 +1700,7 @@ def main():
     # Detect sidebar navigation click → clear any override
     last = st.session_state.get("_last_sidebar_page", "Home")
     if sidebar_page != last:
+        st.session_state.pop("cached_products", None)  # force refresh on nav
         st.session_state["page_override"]      = None
         st.session_state["selected_product"]   = None   # clear detail on nav switch
         st.session_state["_last_sidebar_page"] = sidebar_page
@@ -1648,6 +1718,7 @@ def main():
         "FAQ":      page_faq,
         "About Us": page_about,
     }
+
     routes.get(active_page, page_home)()
 
 
