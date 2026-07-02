@@ -1,6 +1,6 @@
 import sqlite3
 import pandas as pd
-
+import streamlit as st   
 def init_db():
 
     conn = sqlite3.connect('techhub.db')
@@ -86,11 +86,13 @@ def verify_customer(email, password):
     if customer: return {"id": customer[0], "name": customer[1], "email": customer[2]}
     return None
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_products():
     conn = sqlite3.connect('techhub.db')
     df = pd.read_sql_query("SELECT * FROM products", conn)
     conn.close()
     return df
+
 
 def get_customer_orders(customer_id):
 

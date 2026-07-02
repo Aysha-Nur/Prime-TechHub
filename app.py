@@ -1,6 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components
-
+import time
 # ================================================================
 # RULE 1: set_page_config() must be FIRST — never called twice.
 # ================================================================
@@ -362,7 +361,6 @@ def init_session_state():
         "page_override":       None,    # set by cart header button
         "_last_sidebar_page":  "Home",  # detect sidebar nav changes
         "selected_product":    None,    # int product ID when viewing detail, else None
-        "_restore_scroll": False,   # set True by Back to Shop to trigger scroll restore
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -373,8 +371,8 @@ def init_session_state():
 # SIDEBAR NAVIGATION
 # ================================================================
 def render_sidebar():
-    menu_options = ["Home", "Filters", "Account", "Settings", "FAQ", "About Us"]
-    menu_icons   = ["house-fill", "funnel-fill", "person-fill",
+    menu_options = ["Home", "Account", "Settings", "FAQ", "About Us"]
+    menu_icons   = ["house-fill", "person-fill",
                     "gear-fill", "question-circle-fill", "info-square-fill"]
 
     if st.session_state.get("admin_logged_in"):
@@ -513,7 +511,6 @@ def render_product_detail(product_id: int):
     """, unsafe_allow_html=True)
     if st.button("← Back to Shop", key="back_to_shop_btn"):
         st.session_state["selected_product"] = None
-        st.session_state["_restore_scroll"]  = True   # triggers scroll restore (Fix 5)
         st.rerun()
 
     st.markdown("<hr style='margin:0.5rem 0 1.5rem 0;'>", unsafe_allow_html=True)
@@ -708,6 +705,9 @@ def _render_featured_section(products_df):
 # PAGE: HOME
 # ================================================================
 def page_home():
+    # --- UI RENDER BUFFER ---
+    # Gives the browser 150ms to wipe the old page before drawing the new grid
+    time.sleep(0.30)
     # Cache products in session state for this render cycle only
     # (re-fetches once per sidebar navigation, not on every widget click)
     if "cached_products" not in st.session_state:
@@ -722,46 +722,6 @@ def page_home():
                 render_product_detail(int(match.iloc[0]["id"]))
                 return
         st.session_state["selected_product"] = None   # product not found — reset
-        
-        # ── Scroll tracker: always-on listener + conditional restore ──
-    _do_restore = st.session_state.get("_restore_scroll", False)
-    st.session_state["_restore_scroll"] = False
-
-    _restore_js = ""
-    if _do_restore:
-        _restore_js = """
-        var _savedY = sessionStorage.getItem("pth_scroll_y");
-        if (_savedY && parseInt(_savedY) > 80) {
-            var _attempts = 0;
-            var _maxAttempts = 8;
-            var _target = parseInt(_savedY);
-            var _retryScroll = setInterval(function() {
-                _attempts++;
-                window.parent.scrollTo({ top: _target, behavior: "instant" });
-                if (_attempts >= _maxAttempts) {
-                    clearInterval(_retryScroll);
-                }
-            }, 250);
-        }
-        """
-
-    components.html(f"""
-    <script>
-        (function() {{
-            window.parent._pthTrackingEnabled = true;
-            if (!window.parent._pthScrollBound) {{
-                window.parent._pthScrollBound = true;
-                window.parent.addEventListener("scroll", function() {{
-                    if (window.parent._pthTrackingEnabled) {{
-                        sessionStorage.setItem("pth_scroll_y",
-                            String(window.parent.scrollY));
-                    }}
-                }}, {{ passive: true }});
-            }}
-            {_restore_js}
-        }})();
-    </script>
-    """, height=0, scrolling=False)
 
     # ── Existing header columns start here (unchanged) ──
     h1, h2, h3 = st.columns([1, 1.8, 0.9])
@@ -849,11 +809,10 @@ def page_home():
     </div>
     """, unsafe_allow_html=True)
 
-    products_df = get_products()
-
+    # products_df already loaded from session cache at top of function
     if not products_df.empty:
         _render_featured_section(products_df)
-        st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
 
     st.markdown("""
     <div style="display:flex; align-items:center; margin:8px 0 14px 0; gap:12px;">
@@ -980,76 +939,6 @@ def page_home():
                                 "category": row.get("category", ""),
                             }
                         st.toast(f"✅ {row['name']} added to cart!")
-
-
-# ================================================================
-# PAGE: FILTERS
-# ================================================================
-def page_filters():
-    st.markdown("## 🔍 Browse & Filter Devices")
-    st.caption("Narrow down your perfect smart home setup.")
-
-    products_df = get_products()
-    if products_df.empty:
-        st.info("Inventory is empty.")
-        return
-
-    col_filter, col_results = st.columns([0.8, 3.2])
-
-    with col_filter:
-        st.markdown("#### Filters")
-        selected_cats = st.multiselect(
-            "Category", options=sorted(products_df["category"].unique().tolist()), default=[]
-        )
-        min_price  = int(products_df["price"].min())
-        max_price  = int(products_df["price"].max())
-        price_range = st.slider("Price Range (PKR)", min_price, max_price, (min_price, max_price), step=500)
-        in_stock_only = st.checkbox("In-Stock Only", value=True)
-
-    with col_results:
-        # Initialize cart reference at block scope — prevents UnboundLocalError
-        # in Add to Cart button handlers below
-        cart = st.session_state.setdefault("cart", {})
-        filtered = products_df.copy()
-        if selected_cats:
-            filtered = filtered[filtered["category"].isin(selected_cats)]
-        filtered = filtered[(filtered["price"] >= price_range[0]) & (filtered["price"] <= price_range[1])]
-        if in_stock_only:
-            filtered = filtered[filtered["stock"] > 0]
-
-        if filtered.empty:
-            st.info("No products match your filters.")
-        else:
-            st.caption(f"Showing **{len(filtered)}** product(s)")
-            NUM_COLUMNS = 3
-            cols        = st.columns(NUM_COLUMNS)
-            for i, (_, row) in enumerate(filtered.iterrows()):
-                pid = str(row["id"])
-                with cols[i % NUM_COLUMNS]:
-                    with st.container(border=True):
-                        st.markdown(f"<div style='font-size:18px;font-weight:500;'>{row['name']}</div>", unsafe_allow_html=True)
-                        st.caption(f"📂 {row['category']}")
-                        st.markdown(f"<div style='font-size:17px;font-weight:700;margin:8px 0;'>PKR {row['price']:,.0f}</div>", unsafe_allow_html=True)
-                        fd, fc = st.columns(2)
-                        with fd:
-                            if st.button("Details", key=f"fdet_{row['id']}", use_container_width=True):
-                                st.session_state["selected_product"] = int(row["id"])
-                                st.session_state["page_override"]    = "Home"
-                                st.rerun()
-                        with fc:
-                            if st.button("Add to Cart", key=f"filter_add_{row['id']}", use_container_width=True):
-                                # cart already initialized at col_results scope above
-                                if pid in cart:
-                                    cart[pid]["qty"] += 1
-                                else:
-                                    cart[pid] = {
-                                        "qty":      1,
-                                        "name":     row["name"],
-                                        "price":    float(row["price"]),
-                                        "category": row.get("category", ""),
-                                    }
-                                st.toast(f"✅ Added {row['name']} to cart!")
-
 
 # ================================================================
 # PAGE: CART & CHECKOUT
@@ -1317,6 +1206,8 @@ def page_cart():
 # PAGE: ACCOUNT
 # ================================================================
 def page_account():
+    # --- UI RENDER BUFFER ---
+    time.sleep(0.25)
     st.markdown("""
     <div style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
                 padding:22px 32px 22px 32px; border-radius:14px;
@@ -1474,6 +1365,8 @@ def page_account():
 # PAGE: ADMIN DASHBOARD
 # ================================================================
 def page_admin():
+    # --- UI RENDER BUFFER ---
+    time.sleep(0.15)
     if not st.session_state.get("admin_logged_in"):
         st.error("🔒 Access Denied. Please sign in as Administrator from the Account tab.")
         return
@@ -1546,6 +1439,8 @@ def page_admin():
 # PAGE: SETTINGS
 # ================================================================
 def page_settings():
+    # --- UI RENDER BUFFER ---
+    time.sleep(0.25)
     st.markdown("### ⚙️ Account Settings")
     st.caption("Manage your Prime TechHub preferences and security.")
 
@@ -1615,6 +1510,8 @@ def page_settings():
 # PAGE: FAQ — UNTOUCHED
 # ================================================================
 def page_faq():
+    # --- UI RENDER BUFFER ---
+    time.sleep(0.25)
     st.markdown("### ❓ Frequently Asked Questions")
     st.caption("Everything you need to know about Prime TechHub.")
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1649,6 +1546,8 @@ def page_faq():
 # PAGE: ABOUT US — UNTOUCHED
 # ================================================================
 def page_about():
+    # --- UI RENDER BUFFER ---
+    time.sleep(0.25)
     st.markdown("### 🏢 About Prime TechHub")
     st.markdown("<p style='color:#666;'>Building the Future of Smart Home Infrastructure.</p>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1671,7 +1570,7 @@ def page_about():
     st.markdown("#### 📊 Platform Highlights")
     m1, m2, m3, m4 = st.columns(4)
     for col, label, value in [
-        (m1, "Products",   "15+"),
+        (m1, "Products",   "25+"),
         (m2, "Categories", "9"),
         (m3, "Uptime SLA", "99.9%"),
         (m4, "Security",   "AES-256"),
@@ -1710,7 +1609,6 @@ def main():
 
     routes = {
         "Home":     page_home,
-        "Filters":  page_filters,
         "Cart":     page_cart,
         "Account":  page_account,
         "Admin":    page_admin,
