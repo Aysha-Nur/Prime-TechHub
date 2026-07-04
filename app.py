@@ -9,27 +9,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-# ── DESKTOP VIEWPORT LOCK — forces mobile browsers to render at desktop width ──
-# Position: directly after st.set_page_config(), before anything else
-import streamlit.components.v1 as components
-components.html("""
-<script>
-    (function() {
-        var meta = parent.document.querySelector('meta[name="viewport"]');
-        if (meta) {
-            meta.setAttribute(
-                'content',
-                'width=1400, initial-scale=0.3, minimum-scale=0.1, maximum-scale=2.0, user-scalable=yes'
-            );
-        } else {
-            var newMeta = parent.document.createElement('meta');
-            newMeta.name    = "viewport";
-            newMeta.content = "width=1400, initial-scale=0.3, minimum-scale=0.1, maximum-scale=2.0, user-scalable=yes";
-            parent.document.getElementsByTagName('head')[0].appendChild(newMeta);
-        }
-    })();
-</script>
-""", height=0, scrolling=False)
 
 # ================================================================
 # RULE 2: All DB logic lives in database.py — never duplicated here.
