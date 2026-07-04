@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+
+  # ── Service 1: Your Streamlit application ──────────────────────
+  streamlit:
+    build:
+      context: .           # Build using the Dockerfile in this directory
+      dockerfile: Dockerfile
+    container_name: primetechhub_app
+    expose:
+      - "8501"             # Internal only — NOT exposed to host machine
+                           # Only Nginx can reach this port
+    volumes:
+      # Named volume: mounts to /app/data/ inside the container
+      # techhub.db lives here and SURVIVES container restarts
+      - techhub_data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1  # Ensures Python print() shows in docker logs
+    restart: unless-stopped  # Auto-restarts on crash, stops only when you
+                              # explicitly run 'docker compose down'
+    networks:
+      - primetechhub_net
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Service 2: Nginx reverse proxy ─────────────────────────────
+  nginx:
+    image: nginx:alpine      # Lightweight Alpine-based Nginx
+    container_name: primetechhub_nginx
+    ports:
+      - "80:80"              # Maps host port 80 → container port 80
+                             # This is the PUBLIC port your evaluator visits
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro  # ro = read-only, safer
+    depends_on:
+      streamlit:
+        condition: service_healthy   # Nginx waits until Streamlit is healthy
+    restart: unless-stopped
+    networks:
+      - primetechhub_net
+
+# ── Named Volume Definition ─────────────────────────────────────
+volumes:
+  techhub_data:
+    name: primetechhub_sqlite_volume
+    # Stored at: C:\ProgramData\DockerDesktop\volumes\ (on Windows)
+    # Survives: docker compose down, container crashes, rebuilds
+    # Deleted by: docker compose down --volumes  ← only if you explicitly ask
+
+# ── Internal Network ────────────────────────────────────────────
+networks:
+  primetechhub_net:
+    driver: bridge
+    # Isolated bridge network — containers talk to each other by
+    # service name (e.g., "streamlit:8501") not by IP address

@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st   
 def init_db():
 
-    conn = sqlite3.connect('techhub.db')
+    conn = sqlite3.connect('data/techhub.db')
     cursor = conn.cursor()
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -57,7 +57,7 @@ def init_db():
     print("Database built successfully.")
 
 def verify_admin(username, password):
-    conn = sqlite3.connect('techhub.db')
+    conn = sqlite3.connect('data/techhub.db')
     cursor = conn.cursor()
     cursor.execute("SELECT id, username, role FROM users WHERE username=? AND password=? AND role='admin'", (username, password))
     admin = cursor.fetchone()
@@ -66,7 +66,7 @@ def verify_admin(username, password):
     return None
 
 def register_customer(name, email, password):
-    conn = sqlite3.connect('techhub.db')
+    conn = sqlite3.connect('data/techhub.db')
     cursor = conn.cursor()
     try:
         cursor.execute("INSERT INTO customers (name, email, password) VALUES (?, ?, ?)", (name, email, password))
@@ -78,7 +78,7 @@ def register_customer(name, email, password):
     return success
 
 def verify_customer(email, password):
-    conn = sqlite3.connect('techhub.db')
+    conn = sqlite3.connect('data/techhub.db')
     cursor = conn.cursor()
     cursor.execute("SELECT id, name, email FROM customers WHERE email=? AND password=?", (email, password))
     customer = cursor.fetchone()
@@ -88,7 +88,7 @@ def verify_customer(email, password):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_products():
-    conn = sqlite3.connect('techhub.db')
+    conn = sqlite3.connect('data/techhub.db')
     df = pd.read_sql_query("SELECT * FROM products", conn)
     conn.close()
     return df
@@ -96,7 +96,7 @@ def get_products():
 
 def get_customer_orders(customer_id):
 
-    conn = sqlite3.connect('techhub.db')
+    conn = sqlite3.connect('data/techhub.db')
     cursor = conn.cursor()
     cursor.execute("SELECT product_name, price, sale_date FROM orders WHERE customer_id=?", (customer_id,))
     orders = cursor.fetchall()
@@ -105,7 +105,7 @@ def get_customer_orders(customer_id):
 
 def process_checkout(cart_items, customer_id):
 
-    conn = sqlite3.connect('techhub.db')
+    conn = sqlite3.connect('data/techhub.db')
     cursor = conn.cursor()
     success = False
     try:
@@ -126,7 +126,7 @@ def update_customer_password(customer_id, current_password, new_password):
     Verifies current password then updates to new one.
     Returns: 'success' | 'wrong_password' | 'error'
     """
-    conn   = sqlite3.connect('techhub.db')
+    conn   = sqlite3.connect('data/techhub.db')
     cursor = conn.cursor()
     try:
         # Verify current password belongs to this customer

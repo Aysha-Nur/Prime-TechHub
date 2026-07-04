@@ -707,7 +707,7 @@ def _render_featured_section(products_df):
 def page_home():
     # --- UI RENDER BUFFER ---
     # Gives the browser 150ms to wipe the old page before drawing the new grid
-    time.sleep(0.30)
+    time.sleep(0.20)
     # Cache products in session state for this render cycle only
     # (re-fetches once per sidebar navigation, not on every widget click)
     if "cached_products" not in st.session_state:
@@ -1207,7 +1207,7 @@ def page_cart():
 # ================================================================
 def page_account():
     # --- UI RENDER BUFFER ---
-    time.sleep(0.25)
+    time.sleep(0.15)
     st.markdown("""
     <div style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
                 padding:22px 32px 22px 32px; border-radius:14px;
@@ -1308,7 +1308,7 @@ def page_account():
                 """, unsafe_allow_html=True)
 
                 st.markdown("""
-                <a href="https://github.com/Ayisha-Nur/Prime-TechHub#authentication-notice"
+                <a href="https://github.com/Aysha-Nur/Prime-TechHub#authentication-notice"
                    target="_blank" style="text-decoration:none;">
                     <div style="background:white; border:1px solid #dadce0; border-radius:7px;
                                 padding:9px 20px; display:flex; align-items:center;
@@ -1440,7 +1440,7 @@ def page_admin():
 # ================================================================
 def page_settings():
     # --- UI RENDER BUFFER ---
-    time.sleep(0.25)
+    time.sleep(0.15)
     st.markdown("### ⚙️ Account Settings")
     st.caption("Manage your Prime TechHub preferences and security.")
 
@@ -1511,7 +1511,7 @@ def page_settings():
 # ================================================================
 def page_faq():
     # --- UI RENDER BUFFER ---
-    time.sleep(0.25)
+    time.sleep(0.15)
     st.markdown("### ❓ Frequently Asked Questions")
     st.caption("Everything you need to know about Prime TechHub.")
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1547,7 +1547,7 @@ def page_faq():
 # ================================================================
 def page_about():
     # --- UI RENDER BUFFER ---
-    time.sleep(0.25)
+    time.sleep(0.15)
     st.markdown("### 🏢 About Prime TechHub")
     st.markdown("<p style='color:#666;'>Building the Future of Smart Home Infrastructure.</p>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)

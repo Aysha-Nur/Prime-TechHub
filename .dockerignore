@@ -1,0 +1,15 @@
+# Never copy these into the Docker image
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+*.md
+data/techhub.db
+.env
+*.jpg
+*.jpeg
+*.png
+*.gif
