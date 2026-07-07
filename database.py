@@ -117,7 +117,7 @@ def verify_customer(email, password):
     if customer: return {"id": customer[0], "name": customer[1], "email": customer[2]}
     return None
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(show_spinner=False)
 def get_products():
     conn = sqlite3.connect('data/techhub.db')
     df = pd.read_sql_query("SELECT * FROM products", conn)
