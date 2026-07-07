@@ -1308,7 +1308,7 @@ def page_account():
                 """, unsafe_allow_html=True)
 
                 st.markdown("""
-                <a href="https://github.com/Aysha-Nur/Prime-TechHub#evaluator-access-guide"
+                <a href="https://github.com/Aysha-Nur/Prime-TechHub"
                    target="_blank" style="text-decoration:none;">
                     <div style="background:white; border:1px solid #dadce0; border-radius:7px;
                                 padding:9px 20px; display:flex; align-items:center;
