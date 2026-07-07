@@ -5,6 +5,7 @@ def init_db():
 
     conn = sqlite3.connect('data/techhub.db')
     cursor = conn.cursor()
+    cursor.execute("DROP TABLE IF EXISTS products;") # Removes the old catalog of 15 products
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL)''')
