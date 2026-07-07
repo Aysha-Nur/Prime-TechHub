@@ -339,7 +339,7 @@ Access at: `http://localhost:8501`
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/Prime-TechHub.git
+git clone https://github.com/Aysha-Nur/Prime-TechHub.git
 cd Prime-TechHub
 
 # Build and start both containers
