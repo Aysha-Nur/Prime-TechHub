@@ -480,9 +480,9 @@ OAuth 2.0 integration is for live production environment. The current implementa
 
 ---
 
-## Scholarship & Academic Context
+## Academic Context
 
-This project was developed as a Final Year Project in partial fulfillment of a Bachelor's degree in Computer Science / IT Infrastructure, with deliberate architectural decisions made to align with the competency profile of graduate programs in Cloud Computing and Distributed Systems Infrastructure — specifically Erasmus Mundus Joint Master's programmes and DAAD-funded research tracks.
+This project was developed as a Final Year Project in partial fulfillment of a Bachelor's degree in Computer Science / IT Infrastructure, with deliberate architectural decisions made to align with the competency profile of graduate programs in Cloud Computing and Distributed Systems Infrastructure.
 
 ### Engineering Decisions Mapped to Infrastructure Competencies
 
