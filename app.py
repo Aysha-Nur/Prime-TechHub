@@ -1418,7 +1418,7 @@ def page_admin():
                 if not p_name:
                     st.error("Product name is required.")
                 else:
-                    conn = sqlite3.connect("techhub.db")
+                    conn = sqlite3.connect("data/techhub.db")
                     conn.execute(
                         "INSERT INTO products (name, category, price, stock, description) VALUES (?, ?, ?, ?, ?)",
                         (p_name, p_cat, p_price, int(p_stock), p_desc)
@@ -1428,22 +1428,30 @@ def page_admin():
                     st.success(f"✅ '{p_name}' added to inventory!")
 
     with tab2:
-        st.markdown("#### All Sales Records")
-        conn = sqlite3.connect("techhub.db")
-        try:
-            orders_df = pd.read_sql_query(
-                "SELECT o.id, c.name AS customer, o.product_name, o.price, o.sale_date "
-                "FROM orders o LEFT JOIN customers c ON o.customer_id = c.id "
-                "ORDER BY o.sale_date DESC", conn
-            )
-        except Exception:
-            orders_df = pd.DataFrame()
-        conn.close()
-        if orders_df.empty:
-            st.info("No sales recorded yet.")
-        else:
-            st.dataframe(orders_df, use_container_width=True, hide_index=True)
-            st.metric("Total Revenue (PKR)", f"{orders_df['price'].sum():,.2f}")
+            st.markdown("#### All Sales Records")
+            conn = sqlite3.connect("data/techhub.db")
+            try:
+                orders_df = pd.read_sql_query(
+                    "SELECT o.id, o.customer_id, o.product_name, "
+                    "o.price, o.sale_date, "
+                    "COALESCE(c.name, 'Guest') AS customer "
+                    "FROM orders o "
+                    "LEFT JOIN customers c ON o.customer_id = c.id "
+                    "ORDER BY o.sale_date DESC",
+                    conn
+                )
+            except Exception as e:
+                st.error(f"Query error: {e}")
+                orders_df = pd.DataFrame()
+            finally:
+                conn.close()
+
+            if orders_df.empty:
+                st.info("No sales recorded yet.")
+            else:
+                st.dataframe(orders_df, use_container_width=True, hide_index=True)
+                total_revenue = orders_df["price"].sum()
+                st.metric("Total Revenue (PKR)", f"{total_revenue:,.2f}")
 
     with tab3:
         st.markdown("#### Remove Device from Inventory")
@@ -1453,7 +1461,7 @@ def page_admin():
         else:
             item_to_delete = st.selectbox("Select product to remove:", products_df["name"].tolist())
             if st.button("🗑️ Delete Item", type="primary"):
-                conn = sqlite3.connect("techhub.db")
+                conn = sqlite3.connect("data/techhub.db")
                 conn.execute("DELETE FROM products WHERE name = ?", (item_to_delete,))
                 conn.commit()
                 conn.close()
