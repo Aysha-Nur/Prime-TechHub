@@ -377,6 +377,7 @@ def render_sidebar():
                     "gear-fill", "question-circle-fill", "info-square-fill"]
 
     if st.session_state.get("admin_logged_in"):
+        st.cache_data.clear() # Fires exactly once upon admin access to clear the empty database view state
         menu_options.append("Admin")
         menu_icons.append("terminal-fill")
 
