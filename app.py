@@ -1,5 +1,6 @@
 import streamlit as st
 import time
+import streamlit.components.v1 as components
 # ================================================================
 # RULE 1: set_page_config() must be FIRST — never called twice.
 # ================================================================
@@ -773,6 +774,30 @@ def page_home():
             placeholder="  Search smart devices 🔍…",
             label_visibility="collapsed", key="home_search"
         )
+        # Scroll to matching product card when user selects from search box
+        if selected_product_name:
+            _search_match = products_df_for_search[
+                products_df_for_search["name"] == selected_product_name
+            ]
+            if not _search_match.empty:
+                _target_id = int(_search_match.iloc[0]["id"])
+                components.html(f"""
+                <script>
+                    (function() {{
+                        // Small delay ensures card anchor has rendered
+                        // before scroll fires
+                        setTimeout(function() {{
+                            var el = parent.document.getElementById('prod-{_target_id}');
+                            if (el) {{
+                                el.scrollIntoView({{
+                                    behavior: 'smooth',
+                                    block: 'center'
+                                }});
+                            }}
+                        }}, 400);
+                    }})();
+                </script>
+                """, height=0, scrolling=False)
 
     with h3:
         # Cart total quantity
@@ -867,6 +892,11 @@ def page_home():
         pid       = str(row["id"])
 
         with col:
+            # Anchor wrapper — gives each card a unique scroll target ID
+            st.markdown(
+                f"<div id='prod-{int(row['id'])}'></div>",
+                unsafe_allow_html=True
+            )
             with st.container(border=True):
                 # ── Thumbnail: Unsplash image with gradient fallback ──
                 _thumb_url  = _CATEGORY_UNSPLASH.get(row.get("category", ""), "")
