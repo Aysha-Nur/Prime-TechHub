@@ -300,7 +300,141 @@ The `docker-compose.yml` and `nginx.conf` files serve a dual function:
 
 This mirrors standard enterprise practice: infrastructure definitions live in version control and serve both local developer environments and cloud orchestration pipelines.
 
+--- 
+
+## System Architecture, Resource Optimization & Engineering Inquiry
+
+This section documents the architectural reasoning behind infrastructure decisions
+made during the development and deployment of Prime TechHub. These choices were
+not made arbitrarily — each reflects a constraint, a tradeoff, or a deliberate
+preference with measurable consequences on system behavior.
+
 ---
+
+### Architectural Isolation: Containerization over Monolithic Deployment
+
+A conventional deployment of this application would place the Python runtime,
+application logic, and static assets directly on a host operating system — a
+monolithic execution context where dependency conflicts, environment drift, and
+non-reproducible builds are common failure points.
+
+The adopted approach uses container-level isolation via Docker to separate the
+execution environment from the host system entirely. The Streamlit application
+runs inside a `python:3.11-slim` derived image with a fixed dependency manifest
+(`requirements.txt`), ensuring that the application behaves identically across a
+local Windows development machine, a Linux CI runner, and a cloud container
+runtime. This property — environment reproducibility — is the foundational
+guarantee of container-based deployment and the primary reason containerization
+is preferred over bare-metal or virtual-machine setups in modern infrastructure
+engineering.
+
+The two-service topology (application engine + reverse proxy) represents a
+minimal form of monolithic decoupling: responsibilities are split at the process
+boundary rather than bundled into a single execution unit. This pattern
+simplifies fault isolation — a crash in the Nginx process does not terminate
+the Python runtime, and vice versa.
+
+---
+
+### Traffic and Security Architecture: Nginx as the Ingress Control Plane
+
+Nginx operates as the sole public-facing network endpoint in the local
+multi-container topology. No external traffic reaches the Streamlit container
+directly — it binds to port 8501 on an internal Docker bridge network and is
+unreachable from the host machine's network interface. All client connections
+enter through Nginx on port 80, where the following control operations occur
+before any request reaches the application:
+
+**WebSocket Protocol Negotiation**
+
+Streamlit's real-time UI state synchronization operates over WebSocket — a
+persistent, full-duplex TCP connection established via an HTTP Upgrade handshake.
+Standard reverse proxy configurations fail here because they do not forward the
+`Upgrade` and `Connection: upgrade` headers, causing the connection to degrade
+to HTTP and the application interface to hang indefinitely. The `nginx.conf` in
+this repository explicitly handles this:
+
+```nginx
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+proxy_buffering off;
+```
+
+`proxy_buffering off` is equally critical. With output buffering active, Nginx
+accumulates Streamlit's streaming server-sent events in memory before forwarding
+them, introducing visible rendering latency on every page load.
+
+**Upstream Abstraction**
+
+The application service is referenced by its Docker Compose service name
+(`streamlit:8501`) rather than by IP address. Docker's internal DNS resolver
+maps this name to the container's current IP at runtime, decoupling the Nginx
+configuration from container addressing — a standard pattern in service mesh
+and orchestration environments where container IPs are ephemeral.
+
+---
+
+### Resource-Constrained Deployment as an Engineering Study Framework
+
+The deployment target — Render's free-tier container runtime — imposes a set
+of constraints that closely model real-world edge-computing and low-resource
+node environments:
+
+| Constraint | Free-Tier Behavior | Engineering Parallel |
+|-----------|-------------------|---------------------|
+| Compute allocation | Container deallocated after ~15 min inactivity | IoT edge nodes with duty-cycle power management |
+| Cold-start latency | 30–45 second provisioning delay on first request | Serverless function cold initialization |
+| Ephemeral filesystem | Container disk resets on restart | Stateless compute nodes requiring external storage |
+| Single instance | No horizontal scaling on free tier | Single-node embedded system deployment |
+
+The ephemeral filesystem constraint exposed a concrete architectural problem:
+SQLite, as a file-based database, requires persistent disk access across container
+restarts. The solution implemented in `docker-compose.yml` — a named Docker
+volume mapped to `/app/data/` — directly addresses this by externalizing the
+database file to a host-managed storage layer that survives container lifecycle
+events. On the cloud free tier, where named volumes are not supported, the
+application responds by reseeding the product catalog at each cold start via
+`_seed_catalog()`, demonstrating a degraded-mode operational fallback pattern.
+
+These constraints were not obstacles to work around — they produced concrete
+engineering decisions that would not have emerged in an unconstrained environment.
+
+---
+
+### Future Research Directions
+
+**1. Lightweight Orchestration Evaluation with K3s**
+
+The current two-container topology is defined in a `docker-compose.yml` and
+managed manually. A logical next research step is evaluating K3s — a CNCF-certified
+Kubernetes distribution with a binary footprint under 70MB — as an orchestration
+layer for this same service topology. K3s would introduce automated pod
+scheduling, health-check-driven restarts, and rolling deployment capability
+without the resource overhead of a full Kubernetes control plane. The research
+question is whether the operational overhead of running K3s on a single-node
+edge device is justified by the resilience gains over a static Compose
+deployment.
+
+**2. Service Identity and Internal Traffic Encryption**
+
+The current internal network communication between Nginx and the Streamlit
+container is unencrypted plaintext HTTP on a Docker bridge network. While this
+is acceptable inside a single-host container runtime, it would be a security
+boundary violation in a multi-host or shared-tenancy environment. A structured
+follow-on study could implement mutual TLS (mTLS) between services using a
+lightweight service mesh such as Linkerd, measuring the latency overhead of
+certificate-based identity verification against the plaintext baseline.
+
+**3. SQLite-to-PostgreSQL Migration under Concurrent Load**
+
+SQLite's write concurrency model — a single writer lock across the entire
+database file — is appropriate for the access patterns of this project.
+A research extension would quantify the point at which this model becomes a
+bottleneck by simulating concurrent checkout transactions and measuring lock
+contention, then evaluate a migration path to PostgreSQL with a connection
+pooler (PgBouncer) to determine the minimum user concurrency threshold that
+justifies the operational complexity of a client-server database engine.
 
 ## Local Setup
 
