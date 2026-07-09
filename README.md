@@ -33,7 +33,7 @@ Built on Python · Streamlit · SQLite · Docker · Nginx · Render Cloud Pipeli
 3. [Infrastructure Stack](#infrastructure-stack)
 4. [Repository Structure](#repository-structure)
 5. [Deployment Methodology](#deployment-methodology)
-6. [Technical Challenges & Future Optimizations](#) 
+6. [System Architecture, Resource Optimization & Engineering Inquiry](#system-architecture-resource-optimization--engineering-inquiry)
 7. [Local Setup](#local-setup)
 8. [Feature Matrix](#feature-matrix)
 9. [Database Schema](#database-schema)
