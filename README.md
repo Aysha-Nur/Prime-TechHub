@@ -10,6 +10,15 @@ Built on Python · Streamlit · SQLite · Docker · Nginx · Render Cloud Pipeli
 
 **[🌐 Live Cloud Prototype Interface](https://prime-techhub.onrender.com)**
 
+---
+
+### System Demonstration
+
+[![Prime TechHub — Full System Demo](https://img.youtube.com/vi/0e59p2oQW0Y/maxresdefault.jpg)](https://www.youtube.com/watch?v=0e59p2oQW0Y)
+> 📽️ Click the thumbnail above to watch the complete 3-minute 46-second technical demonstration — live deployment verification, storefront navigation, cart checkout pipeline, role-based admin dashboard, and infrastructure configuration walkthrough.
+
+---
+
 > **⚠️ Cold-Start Notice — Free-Tier Cloud Container Environment**  
 > This application is deployed on Render's free-tier container pipeline. When the service is inactive, the platform deallocates compute resources. Upon your first request, Render will re-provision the container — expect an initial **30 to 45 second startup delay** before the interface loads. This is a platform-level compute allocation behavior, not an application performance defect. Subsequent interactions within the same session are unaffected.
 
